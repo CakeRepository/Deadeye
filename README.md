@@ -6,8 +6,8 @@ A hunter toolkit for **World of Warcraft: Forever** (interface 16001):
   where you must stand still. It turns red if you move or cast in the aim window, and can play a
   "stop moving" sound.
 - **Range indicator.** A color strip on top of the bar: melee, dead zone, Auto Shot range, or too
-  far. It also warns you when you're not facing your target, have no line of sight, or haven't
-  used Hunter's Mark in combat.
+  far. It also warns you when you're not facing your target, have no line of sight, or your
+  Hunter's Mark isn't on an enemy you can shoot.
 - **Pet panel.** Happiness and the damage bonus or penalty that comes with it, plus health and
   loyalty. Hover it to see diet and training points. It alerts you when your pet needs feeding and
   warns you if you go into a fight without a pet.
@@ -17,6 +17,8 @@ A hunter toolkit for **World of Warcraft: Forever** (interface 16001):
 - **Delay report.** After a fight, shows how much Auto Shot time you lost to moving or casting.
 - **Max camera distance**, if you want to zoom out further.
 - **Options window** with a live preview, plus a chat command for every setting.
+- **In your game's language:** English, Deutsch, Español, Français, Italiano, Português (Brasil),
+  Русский, 한국어, 简体中文 and 繁體中文.
 
 ## Install
 
@@ -41,7 +43,7 @@ change immediately.
 | Colors | Reload, aim window, moving or casting, idle, out-of-range opacity, text and warning colors |
 | Text, Wording | Font, size, outline, where the label and timer go, decimals, and the wording for each phase and warning |
 | Timing & Alerts | When the bar shows, aim window length, latency compensation, range dimming, stop-moving sound, delay report |
-| Range (3 pages) | On or off, when it shows, on the bar or anywhere, strip or text, size, Hunter's Mark reminder, colors, wording |
+| Range (3 pages) | On or off, when it shows, on the bar or anywhere, strip or text, size, Hunter's Mark reminder, colors, wording and font |
 | Pet (3 pages) | On or off, always or only when the pet needs attention, position, width, health and loyalty lines, feed button, skipped food, alerts, sound, font |
 | Camera | Max camera distance |
 
@@ -105,12 +107,19 @@ combat log is closed to addons. In combat, weapon speed, health and target debuf
 - **`UNIT_SPELLCAST_FAILED_QUIET`** for Auto Shot means the shot was due but you were moving.
 - **`UI_ERROR_MESSAGE`** gives the reason behind failed attacks: wrong facing, no line of sight,
   too close or too far.
-- **`C_Spell.IsSpellInRange`** with Auto Shot and your melee abilities gives the range bands. Out
-  of combat, `CheckInteractDistance` tells the dead zone from too far. Addons can't get the exact
+- **`C_Spell.IsSpellInRange`** with Auto Shot and your melee abilities gives the range bands. Auto
+  Shot's own check wins: anything it can reach is past melee range. A melee ability whose check
+  calls a far target "in range" (Raptor Strike does on Forever) is ignored from then on. Out of
+  combat, `CheckInteractDistance` tells the dead zone from too far. Addons can't get the exact
   distance to an enemy.
-- **Hunter's Mark** can be read on the target out of combat. In combat the addon goes by the marks
-  you cast, since debuffs are hidden then. If you switch targets mid-fight it can't tell whether the
-  old target is still marked, so it reminds you again.
+- **Hunter's Mark.** You can only have one out, so the reminder asks whether your mark is on an
+  enemy you can shoot, not whether your target is marked. Out of combat the mark is read on the
+  target. In combat aura details are hidden, but aura instance IDs aren't: the addon notes the ID
+  your mark gets when you cast it (the one new debuff of yours on the target) and looks for it on
+  your target and on enemy nameplates. That shows whether the marked enemy is alive and in Auto
+  Shot range. With enemy nameplates hidden, a cast mark is trusted for its two minutes. If the
+  client lets addons read Hunter's Mark in combat (`C_Secrets.ShouldSpellAuraBeSecret`), it's read
+  directly.
 - **`C_PetInfo`** feeds the pet panel. Pet health is passed straight to the bar without being read.
 - **The feed button** is Blizzard's `SecureActionButtonTemplate`, set to cast Feed Pet and then use
   the food at its `target-bag` and `target-slot`. `C_PetInfo.CanPetEatItem` says what your pet
@@ -129,6 +138,18 @@ combat log is closed to addons. In combat, weapon speed, health and target debuf
 
 Report problems at the [issue tracker](https://github.com/CakeRepository/Deadeye/issues).
 Output from `/deadeye debug` helps.
+
+## Languages
+
+Deadeye follows your game client's language. The translations are machine-made first drafts, so
+native speakers will find things to improve: please open an issue, or edit
+`Locales/<language>.lua` and check it with `python tests/check_locale.py deDE` (or your locale's
+code). Each line there is `L["English text"] = "translation"`. Keep the `%s` and `%d` placeholders
+in the same order, and keep chat commands such as `/deadeye pet unskip` in English.
+
+Chat commands and setting names stay in English in every language, so `/deadeye width 250` works
+everywhere. On Korean and Chinese clients the bar uses the game's own font, the one that has those
+characters. Russian clients get the Cyrillic versions of the other fonts.
 
 ## Development
 
@@ -150,7 +171,8 @@ repository has a CurseForge API token as the secret `CF_API_TOKEN`.
 
 ```text
 Deadeye.toc             load order, saved variables, addon-menu hooks
-Core.lua                saved variables, module registry, /deadeye commands, secret-value helpers
+Core.lua                saved variables, module registry, /deadeye commands, translations (L)
+Locales/*.lua           one translation per language (esES also covers esMX)
 Media.lua               bar textures, fonts, sounds (+ LibSharedMedia)
 Frames.lua              shared drag/lock/Edit Mode handling and positions
 Options/Widgets.lua     checkbox, slider, dropdown, color, text box, button
@@ -167,6 +189,10 @@ docs/curseforge.md      text for the CurseForge project page
 A module calls `ns:NewModule(name, defaults)` and returns its option pages from
 `GetOptionSections()`. The window and the chat commands are both built from those pages, so a new
 setting shows up in both places.
+
+Text the player sees goes through `L["English text"]`, written as a whole sentence with `%s`
+placeholders, never glued together from pieces. The tests fail until every language file
+translates every such text, keeping its placeholders and commands.
 
 ## License
 

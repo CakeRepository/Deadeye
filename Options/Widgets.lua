@@ -295,12 +295,18 @@ function Widgets.header(parent, spec, width)
 	return frame
 end
 
+-- A note grows to fit its text, which runs longer in some languages.
 function Widgets.note(parent, spec, width)
 	local frame = Container(parent, width, spec.height or 34)
 	local text = Label(frame, spec.text, "GameFontDisableSmall")
 	text:SetPoint("TOPLEFT")
-	text:SetPoint("TOPRIGHT")
+	text:SetWidth(width)
 	text:SetWordWrap(true)
+	local needed = math.ceil(text:GetStringHeight()) + 6
+	if needed > frame.height then
+		frame:SetHeight(needed)
+		frame.height = needed
+	end
 	function frame:Refresh() end
 	return frame
 end

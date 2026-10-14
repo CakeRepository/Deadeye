@@ -5,6 +5,7 @@
 --   /deadeye settings [range|pet]       list the settings with their values
 -- Setting names are the "slash" field of each option (see Options\Window.lua).
 local _, ns = ...
+local L = ns.L
 
 local Slash = {}
 ns.Slash = Slash
@@ -27,7 +28,7 @@ local function OptionName(option)
 	elseif option.value ~= "" then
 		return option.value:lower()
 	end
-	return Normalize(option.text)
+	return "none"
 end
 
 function Slash.ColorToHex(color)
@@ -118,12 +119,12 @@ end
 
 local function Accepts(spec)
 	if spec.type == "toggle" then
-		return "on, off or toggle"
+		return L["on, off or toggle"]
 	elseif spec.type == "range" then
 		local format = ns.Widgets.RangeFormat(spec)
-		return "a number from " .. string.format(format, spec.min) .. " to " .. string.format(format, spec.max)
+		return L["a number from %s to %s"]:format(string.format(format, spec.min), string.format(format, spec.max))
 	elseif spec.type == "color" then
-		return "a hex color like ff8800" .. (spec.alpha and " (add two digits for opacity)" or "")
+		return spec.alpha and L["a hex color like ff8800 (add two digits for opacity)"] or L["a hex color like ff8800"]
 	elseif spec.type == "select" then
 		local names = {}
 		for _, option in ipairs(Values(spec)) do
@@ -131,9 +132,9 @@ local function Accepts(spec)
 		end
 		return table.concat(names, ", ")
 	elseif spec.type == "input" then
-		return "any text"
+		return L["any text"]
 	end
-	return "nothing"
+	return L["nothing"]
 end
 
 local function Command(module, spec)
@@ -158,11 +159,11 @@ function Slash.Apply(module, spec, text)
 	if spec.type == "button" then
 		spec.func()
 		ns.OptionsChanged()
-		ns.Print(spec.label .. ": done.")
+		ns.Print(L["%s: done."]:format(spec.label))
 		return
 	end
 	if text == "" then
-		ns.Print(string.format("%s is %s. Change it with %s <%s>.", spec.label, Describe(spec, get()), Command(module, spec), Accepts(spec)))
+		ns.Print(string.format(L["%s is %s. Change it with %s <%s>."], spec.label, Describe(spec, get()), Command(module, spec), Accepts(spec)))
 		return
 	end
 	local value
@@ -186,17 +187,18 @@ function Slash.Apply(module, spec, text)
 		value = text
 	end
 	if value == nil then
-		ns.Print(string.format("Couldn't use '%s' for %s. Expected %s.", text, spec.label, Accepts(spec)))
+		ns.Print(string.format(L["Couldn't use '%s' for %s. Expected %s."], text, spec.label, Accepts(spec)))
 		return
 	end
 	set(value)
 	ns.OptionsChanged()
-	ns.Print(string.format("%s set to %s.", spec.label, Describe(spec, get())))
+	ns.Print(string.format(L["%s set to %s."], spec.label, Describe(spec, get())))
 end
 
 function Slash.List(module)
 	local list = Settings(module)
-	ns.Print((module.title or module.name) .. " settings, change one with /deadeye " .. (module.slashPrefix and module.slashPrefix .. " " or "") .. "<setting> <value>:")
+	local command = "/deadeye " .. (module.slashPrefix and module.slashPrefix .. " " or "")
+	ns.Print(L["%s settings, change one with %s<setting> <value>:"]:format(module.title or module.name, command))
 	local section
 	for _, entry in ipairs(list) do
 		if entry.section ~= section then
@@ -204,7 +206,7 @@ function Slash.List(module)
 			print("  |cffffd100" .. section .. "|r")
 		end
 		local spec = entry.spec
-		local value = spec.type == "button" and "(action)" or Describe(spec, (ns.Widgets.Accessors(module, spec))())
+		local value = spec.type == "button" and L["(action)"] or Describe(spec, (ns.Widgets.Accessors(module, spec))())
 		print("    " .. spec.slash .. "  " .. value)
 	end
 end
@@ -242,9 +244,9 @@ function Slash.RegisterCommands()
 	for _, module in ipairs(ns:GetModules()) do
 		local prefix = module.slashPrefix
 		if prefix then
-			ns:RegisterCommand(prefix, prefix .. " <setting> <value>", "Change " .. (module.title or module.name) .. " settings (/deadeye " .. prefix .. " settings lists them).", function(text)
+			ns:RegisterCommand(prefix, prefix .. " <setting> <value>", L["Change %s settings (/deadeye %s settings lists them)."]:format(module.title or module.name, prefix), function(text)
 				if not module.enabled then
-					ns.Print((module.title or module.name) .. " only runs on hunters.")
+					ns.Print(L["%s only runs on hunters."]:format(module.title or module.name))
 					return
 				end
 				local name, value = SplitFirst(text)
@@ -253,7 +255,7 @@ function Slash.RegisterCommands()
 				elseif (ON[name] or OFF[name]) and value == "" and Slash.Handle(module, "enabled", name) then
 					return
 				elseif not Slash.Handle(module, name, value) then
-					ns.Print("No " .. prefix .. " setting called '" .. name .. "'. Type /deadeye " .. prefix .. " settings.")
+					ns.Print(L["No %s setting called '%s'. Type /deadeye %s settings."]:format(prefix, name, prefix))
 				end
 			end)
 		end
@@ -270,9 +272,9 @@ function Slash.RegisterCommands()
 		if main and name == "" then
 			Slash.List(main)
 		else
-			ns.Print("Nothing to list for '" .. name .. "'.")
+			ns.Print(L["Nothing to list for '%s'."]:format(name))
 		end
 	end
-	ns:RegisterCommand("settings", "settings [range|pet]", "List settings you can change with /deadeye <setting> <value>.", ListSettings)
+	ns:RegisterCommand("settings", "settings [range|pet]", L["List settings you can change with /deadeye <setting> <value>."], ListSettings)
 	ns:RegisterCommand("list", "list", nil, ListSettings)
 end

@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.4.0-beta
+
+- **Deadeye speaks your language:** German, Spanish (Spain and Latin America), French, Italian,
+  Brazilian Portuguese, Russian, Korean, Simplified and Traditional Chinese, besides English. The
+  translations are machine-made first drafts; corrections are very welcome on GitHub.
+- Chat commands and setting names stay in English in every language, so `/deadeye width 250`
+  works everywhere.
+- On Korean and Chinese clients the bar and panels use the game's font, the one that has those
+  characters; Russian clients get the Cyrillic versions of the other fonts.
+- **Fixed:** the range indicator said "Melee" for targets well inside Auto Shot range. Raptor
+  Strike's range check calls far targets in range on Forever; Auto Shot's own range check now
+  wins, and a melee ability caught doing that is ignored.
+- **Smarter Hunter's Mark reminder:** one mark is enough. Switching targets in a fight no longer
+  nags while your mark is on a living enemy in Auto Shot range. The addon follows your mark by its
+  aura ID on your target and enemy nameplates, and reminds you when the marked enemy dies, runs out
+  of range or the mark runs out.
+- The range indicator's font settings moved to its text page, which leaves room for longer text.
+- Notes in the options window grow to fit their text.
+
 ## v0.3.0-beta
 
 - **Renamed to Deadeye.** Another addon already uses the name ForeverHunter. The chat command is

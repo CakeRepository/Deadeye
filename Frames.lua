@@ -4,6 +4,7 @@
 -- module.db.position as the offset of the frame's center from the screen
 -- center, in UIParent units, so it does not shift when the frame's scale changes.
 local _, ns = ...
+local L = ns.L
 
 local Frames = {}
 ns.Frames = Frames
@@ -32,7 +33,7 @@ function ns:SetLocked(locked, quiet)
 	ns.db.locked = locked
 	NotifyModules()
 	if not quiet then
-		ns.Print(locked and "Frames locked." or "Frames unlocked: drag the blue boxes where you want them, then type /deadeye lock.")
+		ns.Print(locked and L["Frames locked."] or L["Frames unlocked: drag the blue boxes where you want them, then type /deadeye lock."])
 	end
 end
 
@@ -111,16 +112,16 @@ function Frames.PositionOptions(module)
 	local halfWidth = math.floor(UIParent:GetWidth() / 2)
 	local halfHeight = math.floor(UIParent:GetHeight() / 2)
 	return {
-		{ type = "toggle", label = "Unlock frames to drag them", slash = "unlocked",
+		{ type = "toggle", label = L["Unlock frames to drag them"], slash = "unlocked",
 			get = function() return ns:IsUnlocked() end,
 			set = function(value) ns:SetLocked(not value, true) end },
-		{ type = "range", label = "X offset from center", key = "position.x", min = -halfWidth, max = halfWidth, step = 1, slash = "x" },
-		{ type = "range", label = "Y offset from center", key = "position.y", min = -halfHeight, max = halfHeight, step = 1, slash = "y" },
-		{ type = "button", label = "Center horizontally", slash = "center", func = function()
+		{ type = "range", label = L["X offset from center"], key = "position.x", min = -halfWidth, max = halfWidth, step = 1, slash = "x" },
+		{ type = "range", label = L["Y offset from center"], key = "position.y", min = -halfHeight, max = halfHeight, step = 1, slash = "y" },
+		{ type = "button", label = L["Center horizontally"], slash = "center", func = function()
 			module.db.position.x = 0
 			module:ApplyLayout()
 		end },
-		{ type = "range", label = "Scale", key = "scale", min = 0.5, max = 3, step = 0.05, slash = "scale" },
+		{ type = "range", label = L["Scale"], key = "scale", min = 0.5, max = 3, step = 0.05, slash = "scale" },
 	}
 end
 

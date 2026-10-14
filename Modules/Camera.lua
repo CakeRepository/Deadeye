@@ -4,12 +4,13 @@
 -- setting even without the addon, so it is only touched when you turn this on,
 -- and turning it off puts the game's default back.
 local _, ns = ...
+local L = ns.L
 
 local Camera = ns:NewModule("Camera", {
 	enabled = false,
 	zoomFactor = 2.6,
 })
-Camera.title = "Camera"
+Camera.title = L["Camera"]
 Camera.slashPrefix = "camera"
 
 local CVAR = "cameraDistanceMaxZoomFactor"
@@ -46,12 +47,12 @@ end
 function Camera:GetOptionSections()
 	return {
 		{
-			name = "Camera",
+			name = L["Camera"],
 			keys = { "enabled", "zoomFactor" },
 			controls = {
-				{ type = "toggle", label = "Set the max camera distance", key = "enabled", slash = "enabled" },
-				{ type = "range", label = "Max camera distance (zoom factor)", key = "zoomFactor", min = 1, max = 2.6, step = 0.1, slash = "zoom" },
-				{ type = "note", height = 46, text = "1.0 is 15 yards, 2.6 is 39 yards (the most the game allows). Turning this off puts the game's default back." },
+				{ type = "toggle", label = L["Set the max camera distance"], key = "enabled", slash = "enabled" },
+				{ type = "range", label = L["Max camera distance (zoom factor)"], key = "zoomFactor", min = 1, max = 2.6, step = 0.1, slash = "zoom" },
+				{ type = "note", height = 46, text = L["1.0 is 15 yards, 2.6 is 39 yards (the most the game allows). Turning this off puts the game's default back."] },
 			},
 		},
 	}

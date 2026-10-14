@@ -14,6 +14,7 @@
 -- the end of the fight. It is kept apart from the panel (anchored to the screen,
 -- not to the panel) so the panel itself stays free to change in combat.
 local _, ns = ...
+local L = ns.L
 
 local Pet = ns:NewModule("Pet", {
 	enabled = true,
@@ -33,15 +34,15 @@ local Pet = ns:NewModule("Pet", {
 	fontOutline = "",
 	hadPet = false, -- set once a pet is seen, so hunters too low for a pet are not nagged
 })
-Pet.title = "Pet panel"
+Pet.title = L["Pet panel"]
 Pet.slashPrefix = "pet"
 
 local HAPPY = 3
 -- C_PetInfo.GetPetHappiness: 1 unhappy, 2 content, 3 happy (atlases from Blizzard's PetHappiness.lua)
 local HAPPINESS = {
-	{ text = "Unhappy", atlas = "UI-PetMad", color = { 1, 0.3, 0.3 } },
-	{ text = "Content", atlas = "UI-PetNeutral", color = { 1, 0.82, 0 } },
-	{ text = "Happy", atlas = "UI-PetHappiness", color = { 0.35, 0.9, 0.35 } },
+	{ text = L["Unhappy"], atlas = "UI-PetMad", color = { 1, 0.3, 0.3 } },
+	{ text = L["Content"], atlas = "UI-PetNeutral", color = { 1, 0.82, 0 } },
+	{ text = L["Happy"], atlas = "UI-PetHappiness", color = { 0.35, 0.9, 0.35 } },
 }
 local ALERT_COLOR = { 1, 0.3, 0.3 }
 local BACKGROUND_COLOR = { 0, 0, 0, 0.55 }
@@ -53,16 +54,16 @@ local WELL_FED_SPELL_ID = 19705 -- the "Well Fed" buff, for its name in the game
 local BAGS = { 0, 1, 2, 3, 4 } -- backpack and the four bag slots
 local FOOD_LEVEL_STEP = 10 -- see FoodTier
 local FEED_BUTTON_GAP = 3
-local SAMPLE = { kind = "alive", name = "Your pet", happiness = HAPPY, damage = 125, loyaltyRate = 1, loyalty = "Loyalty Level 6 (Best Friend)" }
+local SAMPLE = { kind = "alive", name = L["Your pet"], happiness = HAPPY, damage = 125, loyaltyRate = 1, loyalty = L["Loyalty Level 6 (Best Friend)"] }
 
 local SHOW_CHOICES = {
-	{ value = "always", text = "Always" },
-	{ value = "attention", text = "Only when it needs attention" },
+	{ value = "always", text = L["Always"] },
+	{ value = "attention", text = L["Only when it needs attention"] },
 }
 local OUTLINES = {
-	{ value = "", text = "None" },
-	{ value = "OUTLINE", text = "Outline" },
-	{ value = "THICKOUTLINE", text = "Thick outline" },
+	{ value = "", text = L["None"] },
+	{ value = "OUTLINE", text = L["Outline"] },
+	{ value = "THICKOUTLINE", text = L["Thick outline"] },
 }
 
 local preview = false
@@ -70,7 +71,7 @@ local lastHappiness
 local food, kept -- what the feed button uses, and the food it leaves alone (see FindFood)
 
 local function PetName(fallback)
-	return ns.Readable(UnitName("pet"), fallback or "Your pet")
+	return ns.Readable(UnitName("pet"), fallback or L["Your pet"])
 end
 
 local function Diet()
@@ -143,7 +144,7 @@ local function FindFood(skipped)
 						item.spared = spared.buff
 					end
 					if item.spared then
-						item.spared[#item.spared + 1] = item.name or ("item " .. itemID)
+						item.spared[#item.spared + 1] = item.name or L["item %d"]:format(itemID)
 					end
 					items[itemID] = item
 				end
@@ -258,16 +259,16 @@ function Pet:RefreshPanel()
 		health:SetStatusBarColor(0.2, 0.75, 0.25)
 		local loyalty = status.loyalty or ""
 		if status.loyaltyRate and status.loyaltyRate < 0 then
-			loyalty = loyalty .. " (losing loyalty)"
+			loyalty = L["%s (losing loyalty)"]:format(loyalty)
 		end
 		frame.loyalty:SetText(loyalty)
 	else
-		frame.name:SetText(status.kind == "dead" and "Your pet is dead" or "No pet")
+		frame.name:SetText(status.kind == "dead" and L["Your pet is dead"] or L["No pet"])
 		frame.name:SetTextColor(ALERT_COLOR[1], ALERT_COLOR[2], ALERT_COLOR[3])
 		frame.mood:SetText("")
 		health:SetMinMaxValues(0, 1)
 		health:SetValue(0)
-		frame.loyalty:SetText(status.kind == "dead" and "Cast Revive Pet" or "Cast Call Pet")
+		frame.loyalty:SetText(status.kind == "dead" and L["Cast Revive Pet"] or L["Cast Call Pet"])
 	end
 	frame:Show()
 	return status
@@ -331,7 +332,7 @@ function Pet:SkipFood()
 		return
 	end
 	self.db.skipFoods[food.itemID] = food.name or true
-	ns.Print(string.format("The feed button will leave %s alone. /deadeye pet unskip undoes this.", food.name or "that food"))
+	ns.Print(string.format(L["The feed button will leave %s alone. /deadeye pet unskip undoes this."], food.name or L["that food"]))
 	self:ScanFood()
 end
 
@@ -345,39 +346,39 @@ function Pet:UnskipFoods()
 	table.sort(names)
 	self.db.skipFoods = {}
 	if #names > 0 then
-		ns.Print("The feed button can use " .. table.concat(names, ", ") .. " again.")
+		ns.Print(L["The feed button can use %s again."]:format(table.concat(names, ", ")))
 	else
-		ns.Print("The feed button isn't skipping any food.")
+		ns.Print(L["The feed button isn't skipping any food."])
 	end
 	self:ScanFood()
 end
 
 function Pet:ShowFeedTooltip(owner)
-	local pet = PetName("your pet")
+	local pet = PetName(L["your pet"])
 	local muted = 0.6
 	GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
-	GameTooltip:SetText("Feed " .. pet)
+	GameTooltip:SetText(L["Feed %s"]:format(pet))
 	if food then
-		GameTooltip:AddLine(string.format("%s (%d in your bags)", food.name or "Food", food.total), 1, 1, 1)
+		GameTooltip:AddLine(string.format(L["%s (%d in your bags)"], food.name or L["Food"], food.total), 1, 1, 1)
 		if food.tier == 0 then
-			GameTooltip:AddLine("Probably too low level for " .. pet .. " to eat.", ALERT_COLOR[1], ALERT_COLOR[2], ALERT_COLOR[3], true)
+			GameTooltip:AddLine(L["Probably too low level for %s to eat."]:format(pet), ALERT_COLOR[1], ALERT_COLOR[2], ALERT_COLOR[3], true)
 		elseif food.tier < 3 then
-			GameTooltip:AddLine("Well below " .. pet .. "'s level, so it gives less happiness.", 1, 0.82, 0, true)
+			GameTooltip:AddLine(L["Well below %s's level, so it gives less happiness."]:format(pet), 1, 0.82, 0, true)
 		end
-		GameTooltip:AddLine("Right-click: skip this food", muted, muted, muted)
+		GameTooltip:AddLine(L["Right-click: skip this food"], muted, muted, muted)
 	else
-		GameTooltip:AddLine("No food in your bags that " .. pet .. " eats.", ALERT_COLOR[1], ALERT_COLOR[2], ALERT_COLOR[3], true)
+		GameTooltip:AddLine(L["No food in your bags that %s eats."]:format(pet), ALERT_COLOR[1], ALERT_COLOR[2], ALERT_COLOR[3], true)
 		local diet = Diet()
 		if diet then
-			GameTooltip:AddLine("Eats: " .. diet, 1, 1, 1)
+			GameTooltip:AddLine(L["Eats: %s"]:format(diet), 1, 1, 1)
 		end
-		GameTooltip:AddLine("Click to cast Feed Pet and pick a food yourself.", muted, muted, muted, true)
+		GameTooltip:AddLine(L["Click to cast Feed Pet and pick a food yourself."], muted, muted, muted, true)
 	end
 	if kept and #kept.buff > 0 then
-		GameTooltip:AddLine("Saved for you (well fed): " .. table.concat(kept.buff, ", "), muted, muted, muted, true)
+		GameTooltip:AddLine(L["Saved for you (well fed): %s"]:format(table.concat(kept.buff, ", ")), muted, muted, muted, true)
 	end
 	if kept and #kept.skipped > 0 then
-		GameTooltip:AddLine("Skipped: " .. table.concat(kept.skipped, ", ") .. ". /deadeye pet unskip uses them again.", muted, muted, muted, true)
+		GameTooltip:AddLine(L["Skipped: %s. /deadeye pet unskip uses them again."]:format(table.concat(kept.skipped, ", ")), muted, muted, muted, true)
 	end
 	GameTooltip:Show()
 end
@@ -389,18 +390,18 @@ function Pet:ShowTooltip(owner)
 	end
 	GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
 	if status.kind == "none" then
-		GameTooltip:SetText("No pet")
-		GameTooltip:AddLine("Cast Call Pet to bring it out.", 1, 1, 1)
+		GameTooltip:SetText(L["No pet"])
+		GameTooltip:AddLine(L["Cast Call Pet to bring it out."], 1, 1, 1)
 	elseif status.kind == "dead" then
 		GameTooltip:SetText(PetName())
-		GameTooltip:AddLine("Dead. Cast Revive Pet.", 1, 1, 1)
+		GameTooltip:AddLine(L["Dead. Cast Revive Pet."], 1, 1, 1)
 	else
 		GameTooltip:SetText(status == SAMPLE and SAMPLE.name or PetName())
 		local happiness = status.happiness and HAPPINESS[status.happiness]
 		if happiness then
 			local line = happiness.text
 			if status.damage then
-				line = line .. string.format(": doing %d%% damage", status.damage)
+				line = L["%s: doing %d%% damage"]:format(line, status.damage)
 			end
 			GameTooltip:AddLine(line, happiness.color[1], happiness.color[2], happiness.color[3])
 		end
@@ -408,17 +409,17 @@ function Pet:ShowTooltip(owner)
 			GameTooltip:AddLine(status.loyalty, 1, 1, 1)
 		end
 		if status.loyaltyRate and status.loyaltyRate ~= 0 then
-			GameTooltip:AddLine(status.loyaltyRate > 0 and "Gaining loyalty" or "Losing loyalty: keep it happy", 1, 1, 1)
+			GameTooltip:AddLine(status.loyaltyRate > 0 and L["Gaining loyalty"] or L["Losing loyalty: keep it happy"], 1, 1, 1)
 		end
 		if status ~= SAMPLE then
 			local total, used = C_PetInfo.GetPetTrainingPoints()
 			total, used = ns.Readable(total), ns.Readable(used)
 			if total and used then
-				GameTooltip:AddLine(string.format("Training points: %d free of %d", total - used, total), 1, 1, 1)
+				GameTooltip:AddLine(string.format(L["Training points: %d free of %d"], total - used, total), 1, 1, 1)
 			end
 			local diet = Diet()
 			if diet then
-				GameTooltip:AddLine("Eats: " .. diet, 1, 1, 1)
+				GameTooltip:AddLine(L["Eats: %s"]:format(diet), 1, 1, 1)
 			end
 		end
 	end
@@ -457,7 +458,7 @@ function Pet:BuildFrame()
 	frame:SetScript("OnLeave", function()
 		GameTooltip:Hide()
 	end)
-	ns.Frames.MakeMovable(self, frame, "Pet", true)
+	ns.Frames.MakeMovable(self, frame, L["Pet"], true)
 	self.frame = frame
 end
 
@@ -554,53 +555,53 @@ end
 
 function Pet:GetOptionSections()
 	local general = {
-		{ type = "toggle", label = "Show the pet panel", key = "enabled", slash = "enabled" },
-		{ type = "select", label = "Show it", key = "show", values = SHOW_CHOICES, slash = "show" },
+		{ type = "toggle", label = L["Show the pet panel"], key = "enabled", slash = "enabled" },
+		{ type = "select", label = L["Show it"], key = "show", values = SHOW_CHOICES, slash = "show" },
 	}
 	for _, spec in ipairs(ns.Frames.PositionOptions(self)) do
 		general[#general + 1] = spec
 	end
 	for _, spec in ipairs({
-		{ type = "range", label = "Width", key = "width", min = 100, max = 400, step = 1, slash = "width" },
-		{ type = "toggle", label = "Health bar", key = "showHealth", slash = "health" },
-		{ type = "toggle", label = "Loyalty line", key = "showLoyalty", slash = "loyalty" },
+		{ type = "range", label = L["Width"], key = "width", min = 100, max = 400, step = 1, slash = "width" },
+		{ type = "toggle", label = L["Health bar"], key = "showHealth", slash = "health" },
+		{ type = "toggle", label = L["Loyalty line"], key = "showLoyalty", slash = "loyalty" },
 	}) do
 		general[#general + 1] = spec
 	end
 	return {
 		{
-			name = "Pet",
+			name = L["Pet"],
 			keys = { "enabled", "show", "position", "scale", "width", "showHealth", "showLoyalty" },
 			controls = general,
 		},
 		{
-			name = "Pet: feeding",
+			name = L["Pet: feeding"],
 			keys = { "feedButton", "feedAlert", "skipFoods" },
 			controls = {
-				{ type = "toggle", label = "Feed button next to the panel", key = "feedButton", slash = "feedbutton" },
-				{ type = "toggle", label = "Tell me when my pet needs feeding", key = "feedAlert", slash = "feedalert" },
-				{ type = "button", label = "Use skipped food again", slash = "unskip", func = function()
+				{ type = "toggle", label = L["Feed button next to the panel"], key = "feedButton", slash = "feedbutton" },
+				{ type = "toggle", label = L["Tell me when my pet needs feeding"], key = "feedAlert", slash = "feedalert" },
+				{ type = "button", label = L["Use skipped food again"], slash = "unskip", func = function()
 					self:UnskipFoods()
 				end },
-				{ type = "note", height = 120, text = "Click the button to feed your pet the food it shows. It picks food close to your pet's level, lowest level first so your better food lasts, and leaves food that makes you well fed alone. Right-click it to skip a food. With no food shown, a click casts Feed Pet so you can pick one in your bags.\n\nThe button can't change during a fight. It catches up when the fight ends." },
+				{ type = "note", height = 120, text = L["Click the button to feed your pet the food it shows. It picks food close to your pet's level, lowest level first so your better food lasts, and leaves food that makes you well fed alone. Right-click it to skip a food. With no food shown, a click casts Feed Pet so you can pick one in your bags.\n\nThe button can't change during a fight. It catches up when the fight ends."] },
 			},
 		},
 		{
-			name = "Pet: alerts & text",
+			name = L["Pet: alerts & text"],
 			keys = { "missingAlert", "alertSound", "font", "fontSize", "fontOutline" },
 			controls = {
-				{ type = "toggle", label = "Warn me in combat without my pet", key = "missingAlert", slash = "missingalert" },
-				{ type = "select", label = "Alert sound", key = "alertSound", values = ns.Media.Sounds(), slash = "sound" },
-				{ type = "button", label = "Play the sound", slash = "playsound", func = function()
+				{ type = "toggle", label = L["Warn me in combat without my pet"], key = "missingAlert", slash = "missingalert" },
+				{ type = "select", label = L["Alert sound"], key = "alertSound", values = ns.Media.Sounds(), slash = "sound" },
+				{ type = "button", label = L["Play the sound"], slash = "playsound", func = function()
 					local sound = ns.Media.Sound(self.db.alertSound)
 					if sound then
 						PlaySound(sound, "Master")
 					end
 				end },
-				{ type = "select", label = "Font", key = "font", slash = "font", values = function() return ns.Media.List("font") end },
-				{ type = "range", label = "Font size", key = "fontSize", min = 8, max = 24, step = 1, slash = "fontsize" },
-				{ type = "select", label = "Outline", key = "fontOutline", values = OUTLINES, slash = "outline" },
-				{ type = "note", text = "A pet that isn't happy deals less damage and slowly loses loyalty. Hover the panel to see what it eats." },
+				{ type = "select", label = L["Font"], key = "font", slash = "font", values = function() return ns.Media.List("font") end },
+				{ type = "range", label = L["Font size"], key = "fontSize", min = 8, max = 24, step = 1, slash = "fontsize" },
+				{ type = "select", label = L["Outline"], key = "fontOutline", values = OUTLINES, slash = "outline" },
+				{ type = "note", text = L["A pet that isn't happy deals less damage and slowly loses loyalty. Hover the panel to see what it eats."] },
 			},
 		},
 	}
@@ -639,7 +640,14 @@ function Pet:UNIT_HAPPINESS()
 	local happiness = ns.Readable((C_PetInfo.GetPetHappiness()))
 	if self.db.enabled and self.db.feedAlert and happiness and lastHappiness and happiness < lastHappiness and happiness < HAPPY then
 		local diet = Diet()
-		self:Alert(string.format("%s is %s. Time to feed it%s.", PetName(), HAPPINESS[happiness].text:lower(), diet and " (eats " .. diet .. ")" or ""))
+		-- Lowercased mid-sentence ("Grrl is content."), A-Z only: lower() could
+		-- mangle the bytes of Cyrillic, Korean or Chinese text.
+		local mood = HAPPINESS[happiness].text:gsub("[A-Z]", string.lower)
+		if diet then
+			self:Alert(L["%s is %s. Time to feed it (eats %s)."]:format(PetName(), mood, diet))
+		else
+			self:Alert(L["%s is %s. Time to feed it."]:format(PetName(), mood))
+		end
 	end
 	lastHappiness = happiness
 	self:Refresh()
@@ -653,9 +661,9 @@ end
 function Pet:PLAYER_REGEN_DISABLED()
 	if self.db.enabled and self.db.missingAlert and self.db.hadPet then
 		if not UnitExists("pet") then
-			self:Alert("You're in combat without your pet.")
+			self:Alert(L["You're in combat without your pet."])
 		elseif UnitIsDead("pet") then
-			self:Alert("Your pet is dead. Cast Revive Pet when you can.")
+			self:Alert(L["Your pet is dead. Cast Revive Pet when you can."])
 		end
 	end
 	self:Refresh()

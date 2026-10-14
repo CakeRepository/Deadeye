@@ -8,6 +8,7 @@
 --     } }
 -- See Options\Widgets.lua for what each control type takes.
 local _, ns = ...
+local L = ns.L
 
 local Window = {}
 ns.OptionsWindow = Window
@@ -133,7 +134,7 @@ function Window:Create()
 	if #self.sections == 0 then
 		local empty = content:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 		empty:SetPoint("TOPLEFT")
-		empty:SetText("Nothing to set up on this character: Deadeye's features are for hunters.")
+		empty:SetText(L["Nothing to set up on this character: Deadeye's features are for hunters."])
 		self.emptyText = empty
 	end
 end
@@ -175,7 +176,7 @@ function Window:BuildFooter()
 	end)
 	local label = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	label:SetPoint("LEFT", preview, "RIGHT", 2, 0)
-	label:SetText("Live preview")
+	label:SetText(L["Live preview"])
 	self.previewCheck = preview
 
 	local unlock = CreateFrame("CheckButton", nil, frame, "MinimalCheckboxTemplate")
@@ -186,13 +187,13 @@ function Window:BuildFooter()
 	end)
 	local unlockLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	unlockLabel:SetPoint("LEFT", unlock, "RIGHT", 2, 0)
-	unlockLabel:SetText("Unlock frames")
+	unlockLabel:SetText(L["Unlock frames"])
 	self.unlockCheck = unlock
 
 	local resetAll = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
 	resetAll:SetSize(120, 22)
 	resetAll:SetPoint("BOTTOMRIGHT", -PADDING, 12)
-	resetAll:SetText("Reset all")
+	resetAll:SetText(L["Reset all"])
 	resetAll:SetScript("OnClick", function()
 		self:ResetAll()
 	end)
@@ -201,7 +202,7 @@ function Window:BuildFooter()
 	local resetPage = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
 	resetPage:SetSize(120, 22)
 	resetPage:SetPoint("RIGHT", resetAll, "LEFT", -8, 0)
-	resetPage:SetText("Reset page")
+	resetPage:SetText(L["Reset page"])
 	resetPage:SetScript("OnClick", function()
 		self:ResetPage()
 	end)
@@ -269,7 +270,7 @@ function Window:ResetPage()
 		module:OnSettingsReset()
 	end
 	self:Refresh()
-	ns.Print("Reset " .. section.name .. " to defaults.")
+	ns.Print(L["Reset %s to defaults."]:format(section.name))
 end
 
 -- Asks for a second click within a few seconds before wiping everything.
@@ -277,19 +278,19 @@ function Window:ResetAll()
 	local button = self.resetAllButton
 	if self.confirmResetUntil and GetTime() < self.confirmResetUntil then
 		self.confirmResetUntil = nil
-		button:SetText("Reset all")
+		button:SetText(L["Reset all"])
 		ns:ResetSettings()
 		self:Refresh()
-		ns.Print("All settings reset to defaults.")
+		ns.Print(L["All settings reset to defaults."])
 		return
 	end
 	local deadline = GetTime() + RESET_CONFIRM_SECONDS
 	self.confirmResetUntil = deadline
-	button:SetText("Click to confirm")
+	button:SetText(L["Click to confirm"])
 	C_Timer.After(RESET_CONFIRM_SECONDS, function()
 		if self.confirmResetUntil == deadline then
 			self.confirmResetUntil = nil
-			button:SetText("Reset all")
+			button:SetText(L["Reset all"])
 		end
 	end)
 end
@@ -375,11 +376,11 @@ function Window:RegisterSettingsCategory()
 	title:SetText(ns.title)
 	local text = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
 	text:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -10)
-	text:SetText("Deadeye's settings live in their own window with a live preview of the bar.")
+	text:SetText(L["Deadeye's settings live in their own window with a live preview of the bar."])
 	local button = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
 	button:SetSize(220, 26)
 	button:SetPoint("TOPLEFT", text, "BOTTOMLEFT", 0, -12)
-	button:SetText("Open Deadeye options")
+	button:SetText(L["Open Deadeye options"])
 	button:SetScript("OnClick", function()
 		if SettingsPanel and SettingsPanel:IsShown() and not InCombatLockdown() then
 			HideUIPanel(SettingsPanel)

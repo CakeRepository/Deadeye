@@ -11,6 +11,7 @@
 --    UNIT_SPELLCAST_FAILED_QUIET for Auto Shot and retries about every 0.5s.
 --  * The combat log is closed to addons, so nothing here depends on it.
 local _, ns = ...
+local L = ns.L
 
 local AutoShot = ns:NewModule("AutoShot", {
 	position = { x = 0, y = -220 }, -- bar center relative to the screen center, in UI units
@@ -35,14 +36,14 @@ local AutoShot = ns:NewModule("AutoShot", {
 	timerPosition = "RIGHT",
 	timerDecimals = 1,
 	labels = {
-		reload = "Reload",
-		aim = "Aim",
-		moving = "Moving",
-		casting = "Casting",
-		outOfRange = "Out of range",
-		facing = "Face your target",
-		lineOfSight = "No line of sight",
-		idle = "Auto Shot",
+		reload = L["Reload"],
+		aim = L["Aim"],
+		moving = L["Moving"],
+		casting = L["Casting"],
+		outOfRange = L["Out of range"],
+		facing = L["Face your target"],
+		lineOfSight = L["No line of sight"],
+		idle = L["Auto Shot"],
 	},
 	colors = {
 		reload = { 0.95, 0.60, 0.15 },
@@ -61,7 +62,7 @@ local AutoShot = ns:NewModule("AutoShot", {
 	soundOnlyMoving = true, -- ...but only once you are moving in it
 	reportDelays = false, -- print how much Auto Shot time was lost after each fight
 })
-AutoShot.title = "Auto Shot bar"
+AutoShot.title = L["Auto Shot bar"]
 
 local AUTO_SHOT_SPELL_ID = 75
 local AUTO_SHOT_ICON = "Interface\\Icons\\Ability_Whirlwind"
@@ -104,28 +105,28 @@ local TEXT_ANCHORS = {
 
 local CHOICES = {
 	orientation = {
-		{ value = "HORIZONTAL", text = "Horizontal" },
-		{ value = "VERTICAL", text = "Vertical" },
+		{ value = "HORIZONTAL", text = L["Horizontal"] },
+		{ value = "VERTICAL", text = L["Vertical"] },
 	},
 	textPosition = {
-		{ value = "LEFT", text = "Inside, left" },
-		{ value = "CENTER", text = "Inside, center" },
-		{ value = "RIGHT", text = "Inside, right" },
-		{ value = "ABOVE", text = "Above the bar" },
-		{ value = "BELOW", text = "Below the bar" },
-		{ value = "HIDDEN", text = "Hidden" },
+		{ value = "LEFT", text = L["Inside, left"] },
+		{ value = "CENTER", text = L["Inside, center"] },
+		{ value = "RIGHT", text = L["Inside, right"] },
+		{ value = "ABOVE", text = L["Above the bar"] },
+		{ value = "BELOW", text = L["Below the bar"] },
+		{ value = "HIDDEN", text = L["Hidden"] },
 	},
 	icon = {
-		{ value = "NONE", text = "No icon" },
-		{ value = "LEFT", text = "Left of the bar" },
-		{ value = "RIGHT", text = "Right of the bar" },
-		{ value = "TOP", text = "Above the bar" },
-		{ value = "BOTTOM", text = "Below the bar" },
+		{ value = "NONE", text = L["No icon"] },
+		{ value = "LEFT", text = L["Left of the bar"] },
+		{ value = "RIGHT", text = L["Right of the bar"] },
+		{ value = "TOP", text = L["Above the bar"] },
+		{ value = "BOTTOM", text = L["Below the bar"] },
 	},
 	outline = {
-		{ value = "", text = "None" },
-		{ value = "OUTLINE", text = "Outline" },
-		{ value = "THICKOUTLINE", text = "Thick outline" },
+		{ value = "", text = L["None"] },
+		{ value = "OUTLINE", text = L["Outline"] },
+		{ value = "THICKOUTLINE", text = L["Thick outline"] },
 	},
 	decimals = {
 		{ value = 0, text = "2" },
@@ -133,9 +134,9 @@ local CHOICES = {
 		{ value = 2, text = "1.62" },
 	},
 	show = {
-		{ value = "auto", text = "While shooting or reloading" },
-		{ value = "combat", text = "In combat" },
-		{ value = "always", text = "Always" },
+		{ value = "auto", text = L["While shooting or reloading"] },
+		{ value = "combat", text = L["In combat"] },
+		{ value = "always", text = L["Always"] },
 	},
 }
 
@@ -341,7 +342,7 @@ function AutoShot:CreateBar()
 	bar.label = status:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmallOutline")
 	bar.time = status:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmallOutline")
 
-	ns.Frames.MakeMovable(self, bar, "Auto Shot")
+	ns.Frames.MakeMovable(self, bar, L["Auto Shot"])
 	self.bar = bar
 end
 
@@ -635,9 +636,9 @@ function AutoShot:SetTestMode(enabled)
 	EndSimulation()
 	self:Refresh()
 	if enabled then
-		ns.Print("Test mode on: a fake Auto Shot loops. Move during the green aim window to see it turn red. /deadeye test to stop.")
+		ns.Print(L["Test mode on: a fake Auto Shot loops. Move during the green aim window to see it turn red. /deadeye test to stop."])
 	else
-		ns.Print("Test mode off.")
+		ns.Print(L["Test mode off."])
 	end
 end
 
@@ -667,7 +668,7 @@ local function CountShot(now, previousStart, previousDuration)
 end
 
 local function DescribeFight(fight)
-	return string.format("%d shots, %d held back, %.1fs of Auto Shot lost to moving or casting.",
+	return string.format(L["%d shots, %d held back, %.1fs of Auto Shot lost to moving or casting."],
 		fight.shots, fight.delayed, fight.lost)
 end
 
@@ -676,7 +677,7 @@ function AutoShot:ReportFight()
 	state.lastFight = fight
 	state.fight = { shots = 0, delayed = 0, lost = 0 }
 	if self.db.reportDelays and fight.shots >= 3 then
-		ns.Print("Last fight: " .. DescribeFight(fight))
+		ns.Print(L["Last fight: %s"]:format(DescribeFight(fight)))
 	end
 end
 
@@ -697,93 +698,93 @@ function AutoShot:GetOptionSections()
 	end
 	local position = ns.Frames.PositionOptions(self)
 	for _, spec in ipairs({
-		{ type = "range", label = "Width", key = "width", min = 4, max = 800, step = 1, slash = "width" },
-		{ type = "range", label = "Height", key = "height", min = 4, max = 400, step = 1, slash = "height" },
-		{ type = "select", label = "Orientation", key = "orientation", values = CHOICES.orientation, slash = "orientation",
+		{ type = "range", label = L["Width"], key = "width", min = 4, max = 800, step = 1, slash = "width" },
+		{ type = "range", label = L["Height"], key = "height", min = 4, max = 400, step = 1, slash = "height" },
+		{ type = "select", label = L["Orientation"], key = "orientation", values = CHOICES.orientation, slash = "orientation",
 			set = function(value) self:SetOrientation(value) end },
-		{ type = "toggle", label = "Reverse the fill direction", key = "reverseFill", slash = "reverse" },
-		{ type = "note", text = "You can also drag the bar while Blizzard's Edit Mode is open." },
+		{ type = "toggle", label = L["Reverse the fill direction"], key = "reverseFill", slash = "reverse" },
+		{ type = "note", text = L["You can also drag the bar while Blizzard's Edit Mode is open."] },
 	}) do
 		position[#position + 1] = spec
 	end
 	return {
 		{
-			name = "Position & Size",
+			name = L["Position & Size"],
 			keys = { "position", "width", "height", "scale", "orientation", "reverseFill" },
 			controls = position,
 		},
 		{
-			name = "Bar",
+			name = L["Bar"],
 			keys = { "texture", "background", "borderSize", "borderColor", "showSpark", "showMarker", "showAimZone", "aimZoneAlpha", "icon" },
 			controls = {
-				{ type = "select", label = "Texture", key = "texture", slash = "texture",
+				{ type = "select", label = L["Texture"], key = "texture", slash = "texture",
 					values = function() return ns.Media.List("statusbar") end },
-				{ type = "color", label = "Background", key = "background", alpha = true, slash = "background" },
-				{ type = "range", label = "Border size", key = "borderSize", min = 0, max = 6, step = 1, slash = "border" },
-				{ type = "color", label = "Border color", key = "borderColor", alpha = true, slash = "bordercolor" },
-				{ type = "select", label = "Auto Shot icon", key = "icon", values = CHOICES.icon, slash = "icon" },
-				{ type = "toggle", label = "Spark at the fill edge", key = "showSpark", slash = "spark" },
-				{ type = "toggle", label = "Line where the aim window starts", key = "showMarker", slash = "marker" },
-				{ type = "toggle", label = "Shade the aim window", key = "showAimZone", slash = "shade" },
-				{ type = "range", label = "Aim window shading", key = "aimZoneAlpha", min = 0, max = 1, step = 0.05, slash = "shadealpha" },
+				{ type = "color", label = L["Background"], key = "background", alpha = true, slash = "background" },
+				{ type = "range", label = L["Border size"], key = "borderSize", min = 0, max = 6, step = 1, slash = "border" },
+				{ type = "color", label = L["Border color"], key = "borderColor", alpha = true, slash = "bordercolor" },
+				{ type = "select", label = L["Auto Shot icon"], key = "icon", values = CHOICES.icon, slash = "icon" },
+				{ type = "toggle", label = L["Spark at the fill edge"], key = "showSpark", slash = "spark" },
+				{ type = "toggle", label = L["Line where the aim window starts"], key = "showMarker", slash = "marker" },
+				{ type = "toggle", label = L["Shade the aim window"], key = "showAimZone", slash = "shade" },
+				{ type = "range", label = L["Aim window shading"], key = "aimZoneAlpha", min = 0, max = 1, step = 0.05, slash = "shadealpha" },
 			},
 		},
 		{
-			name = "Colors",
+			name = L["Colors"],
 			keys = { "colors", "outOfRangeAlpha" },
 			controls = {
-				{ type = "header", label = "Bar fill" },
-				{ type = "color", label = "Reloading (move freely)", key = "colors.reload", slash = "reloadcolor" },
-				{ type = "color", label = "Aim window (stand still)", key = "colors.aim", slash = "aimcolor" },
-				{ type = "color", label = "Moving or casting in the aim window", key = "colors.blocked", slash = "blockedcolor" },
-				{ type = "color", label = "Idle", key = "colors.idle", slash = "idlecolor" },
-				{ type = "range", label = "Fill opacity when out of range", key = "outOfRangeAlpha", min = 0.1, max = 1, step = 0.05, slash = "rangealpha" },
-				{ type = "header", label = "Text" },
-				{ type = "color", label = "Text", key = "colors.text", slash = "textcolor" },
-				{ type = "color", label = "Warnings (range, facing, line of sight)", key = "colors.outOfRangeText", slash = "warningcolor" },
+				{ type = "header", label = L["Bar fill"] },
+				{ type = "color", label = L["Reloading (move freely)"], key = "colors.reload", slash = "reloadcolor" },
+				{ type = "color", label = L["Aim window (stand still)"], key = "colors.aim", slash = "aimcolor" },
+				{ type = "color", label = L["Moving or casting in the aim window"], key = "colors.blocked", slash = "blockedcolor" },
+				{ type = "color", label = L["Idle"], key = "colors.idle", slash = "idlecolor" },
+				{ type = "range", label = L["Fill opacity when out of range"], key = "outOfRangeAlpha", min = 0.1, max = 1, step = 0.05, slash = "rangealpha" },
+				{ type = "header", label = L["Text"] },
+				{ type = "color", label = L["Text"], key = "colors.text", slash = "textcolor" },
+				{ type = "color", label = L["Warnings (range, facing, line of sight)"], key = "colors.outOfRangeText", slash = "warningcolor" },
 			},
 		},
 		{
-			name = "Text",
+			name = L["Text"],
 			keys = { "font", "fontSize", "fontOutline", "labelPosition", "timerPosition", "timerDecimals" },
 			controls = {
-				{ type = "select", label = "Font", key = "font", slash = "font",
+				{ type = "select", label = L["Font"], key = "font", slash = "font",
 					values = function() return ns.Media.List("font") end },
-				{ type = "range", label = "Font size", key = "fontSize", min = 6, max = 32, step = 1, slash = "fontsize" },
-				{ type = "select", label = "Outline", key = "fontOutline", values = CHOICES.outline, slash = "outline" },
-				{ type = "select", label = "Phase label", key = "labelPosition", values = CHOICES.textPosition, slash = "label" },
-				{ type = "select", label = "Timer", key = "timerPosition", values = CHOICES.textPosition, slash = "timer" },
-				{ type = "select", label = "Timer decimals", key = "timerDecimals", values = CHOICES.decimals, slash = "decimals" },
+				{ type = "range", label = L["Font size"], key = "fontSize", min = 6, max = 32, step = 1, slash = "fontsize" },
+				{ type = "select", label = L["Outline"], key = "fontOutline", values = CHOICES.outline, slash = "outline" },
+				{ type = "select", label = L["Phase label"], key = "labelPosition", values = CHOICES.textPosition, slash = "label" },
+				{ type = "select", label = L["Timer"], key = "timerPosition", values = CHOICES.textPosition, slash = "timer" },
+				{ type = "select", label = L["Timer decimals"], key = "timerDecimals", values = CHOICES.decimals, slash = "decimals" },
 			},
 		},
 		{
-			name = "Wording",
+			name = L["Wording"],
 			keys = { "labels" },
 			controls = {
-				{ type = "input", label = "While reloading", key = "labels.reload", slash = "reloadtext" },
-				{ type = "input", label = "In the aim window", key = "labels.aim", slash = "aimtext" },
-				{ type = "input", label = "Moving in the aim window", key = "labels.moving", slash = "movingtext" },
-				{ type = "input", label = "Casting in the aim window", key = "labels.casting", slash = "castingtext" },
-				{ type = "input", label = "Target out of range", key = "labels.outOfRange", slash = "rangetext" },
-				{ type = "input", label = "Not facing the target", key = "labels.facing", slash = "facingtext" },
-				{ type = "input", label = "No line of sight", key = "labels.lineOfSight", slash = "lostext" },
-				{ type = "input", label = "Idle", key = "labels.idle", slash = "idletext" },
+				{ type = "input", label = L["While reloading"], key = "labels.reload", slash = "reloadtext" },
+				{ type = "input", label = L["In the aim window"], key = "labels.aim", slash = "aimtext" },
+				{ type = "input", label = L["Moving in the aim window"], key = "labels.moving", slash = "movingtext" },
+				{ type = "input", label = L["Casting in the aim window"], key = "labels.casting", slash = "castingtext" },
+				{ type = "input", label = L["Target out of range"], key = "labels.outOfRange", slash = "rangetext" },
+				{ type = "input", label = L["Not facing the target"], key = "labels.facing", slash = "facingtext" },
+				{ type = "input", label = L["No line of sight"], key = "labels.lineOfSight", slash = "lostext" },
+				{ type = "input", label = L["Idle"], key = "labels.idle", slash = "idletext" },
 			},
 		},
 		{
-			name = "Timing & Alerts",
+			name = L["Timing & Alerts"],
 			keys = { "show", "aimTime", "latency", "rangeCheck", "sound", "soundOnlyMoving", "reportDelays" },
 			controls = {
-				{ type = "select", label = "Show the bar", key = "show", values = CHOICES.show, slash = "show" },
-				{ type = "range", label = "Aim window (seconds)", key = "aimTime", min = 0, max = 1.5, step = 0.05, slash = "aim" },
-				{ type = "toggle", label = "Add my latency to the aim window", key = "latency", slash = "latency" },
-				{ type = "toggle", label = "Dim the bar when out of range", key = "rangeCheck", slash = "rangecheck" },
-				{ type = "toggle", label = "Report lost Auto Shot time after fights", key = "reportDelays", slash = "report" },
-				{ type = "header", label = "Stop-moving alert" },
-				{ type = "select", label = "Sound when the aim window starts", key = "sound", values = ns.Media.Sounds(), slash = "sound" },
-				{ type = "toggle", label = "Only if I'm moving in it", key = "soundOnlyMoving", slash = "soundmoving" },
-				{ type = "button", label = "Play the sound", func = PlayChosenSound, slash = "playsound" },
-				{ type = "note", text = "The aim window is the stretch where you must stand still for Auto Shot to fire." },
+				{ type = "select", label = L["Show the bar"], key = "show", values = CHOICES.show, slash = "show" },
+				{ type = "range", label = L["Aim window (seconds)"], key = "aimTime", min = 0, max = 1.5, step = 0.05, slash = "aim" },
+				{ type = "toggle", label = L["Add my latency to the aim window"], key = "latency", slash = "latency" },
+				{ type = "toggle", label = L["Dim the bar when out of range"], key = "rangeCheck", slash = "rangecheck" },
+				{ type = "toggle", label = L["Report lost Auto Shot time after fights"], key = "reportDelays", slash = "report" },
+				{ type = "header", label = L["Stop-moving alert"] },
+				{ type = "select", label = L["Sound when the aim window starts"], key = "sound", values = ns.Media.Sounds(), slash = "sound" },
+				{ type = "toggle", label = L["Only if I'm moving in it"], key = "soundOnlyMoving", slash = "soundmoving" },
+				{ type = "button", label = L["Play the sound"], func = PlayChosenSound, slash = "playsound" },
+				{ type = "note", text = L["The aim window is the stretch where you must stand still for Auto Shot to fire."] },
 			},
 		},
 	}
@@ -795,7 +796,7 @@ end
 local function BarCommand(handler)
 	return function(arg)
 		if not AutoShot.bar then
-			ns.Print("The Auto Shot bar only runs on hunters.")
+			ns.Print(L["The Auto Shot bar only runs on hunters."])
 			return
 		end
 		handler(arg)
@@ -805,19 +806,19 @@ end
 -- Most bar settings are changed with /deadeye <setting> <value> (Options\Slash.lua);
 -- these are the extra commands.
 function AutoShot:OnInitialize()
-	ns:RegisterCommand("test", "test", "Loop a fake Auto Shot to preview the bar.", BarCommand(function()
+	ns:RegisterCommand("test", "test", L["Loop a fake Auto Shot to preview the bar."], BarCommand(function()
 		self:SetTestMode(not state.test)
 	end))
-	ns:RegisterCommand("stats", "stats", "Show how much Auto Shot time the last fight lost to moving or casting.", BarCommand(function()
+	ns:RegisterCommand("stats", "stats", L["Show how much Auto Shot time the last fight lost to moving or casting."], BarCommand(function()
 		local fight = state.lastFight
 		if state.fight.shots > 0 and InCombat() then
 			fight = state.fight
 		end
 		if not fight or fight.shots == 0 then
-			ns.Print("No Auto Shots recorded yet.")
+			ns.Print(L["No Auto Shots recorded yet."])
 			return
 		end
-		ns.Print((fight == state.fight and "This fight: " or "Last fight: ") .. DescribeFight(fight))
+		ns.Print((fight == state.fight and L["This fight: %s"] or L["Last fight: %s"]):format(DescribeFight(fight)))
 	end))
 	ns:RegisterCommand("text", "text on|off", nil, BarCommand(function(arg)
 		arg = arg:lower()
@@ -827,7 +828,7 @@ function AutoShot:OnInitialize()
 		db.timerPosition = show and "RIGHT" or "HIDDEN"
 		self:ApplyLayout()
 		ns.OptionsChanged()
-		ns.Print(show and "Bar text on." or "Bar text off.")
+		ns.Print(show and L["Bar text on."] or L["Bar text off."])
 	end))
 end
 

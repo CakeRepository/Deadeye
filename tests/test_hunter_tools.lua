@@ -47,6 +47,26 @@ test("range: hidden without a target, then melee / ranged / dead zone / too far"
 	H.False(Range.frame:IsVisible(), "hidden when the target is gone")
 end)
 
+test("range: a melee ability whose check calls every target in range doesn't make far targets read as melee", function()
+	-- Seen in game: at level 10 (Raptor Strike, no Wing Clip yet) a target well inside
+	-- Auto Shot range read as "Melee".
+	local W, Range = Setup()
+	Target(W, true, true)
+	H.Equal(RangeText(Range), "Ranged", "Auto Shot reaches it, so it isn't in melee range")
+	H.Equal(Range.frame.segments.melee.alpha < 0.5, true, "melee band dim")
+	W.inRange, W.close = false, true
+	W.Advance(0.12)
+	H.Equal(RangeText(Range), "Dead zone", "the broken check is ignored from then on")
+	W.close = false
+	W.Advance(0.12)
+	H.Equal(RangeText(Range), "Out of range", "too far")
+
+	-- Out of combat it's caught even before Auto Shot can reach: past duel range isn't melee.
+	local W2, Range2 = Setup()
+	Target(W2, false, true, false)
+	H.Equal(RangeText(Range2), "Out of range", "past duel range")
+end)
+
 test("range: in combat it never calls the restricted distance check", function()
 	local W, Range = Setup()
 	W.Slash("range markalert off")
@@ -200,7 +220,7 @@ local function CastMark(W)
 	W.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-HM", 14325)
 end
 
-test("mark: reminds you in combat until you mark the target", function()
+test("mark: reminds you in combat until your mark is out, and one mark is enough", function()
 	local W, Range = Setup()
 	Target(W, true, false)
 	H.Equal(RangeText(Range), "Ranged", "no reminder out of combat")
@@ -213,11 +233,85 @@ test("mark: reminds you in combat until you mark the target", function()
 	H.Equal(RangeText(Range), "Ranged", "marked (any rank counts)")
 	W.Advance(30)
 	H.Equal(RangeText(Range), "Ranged", "still marked")
+	-- Without enemy nameplates to look at, the mark is trusted for its two minutes.
 	W.Fire("PLAYER_TARGET_CHANGED")
-	H.Equal(RangeText(Range), "Mark your target", "a new target needs a mark")
-	CastMark(W)
-	W.Advance(121)
+	H.Equal(RangeText(Range), "Ranged", "switching targets doesn't nag: you can only have one mark out")
+	W.Advance(91)
 	H.Equal(RangeText(Range), "Mark your target", "the mark has worn off after two minutes")
+	CastMark(W)
+	H.Equal(RangeText(Range), "Ranged", "marked again")
+	W.inCombat = false
+	W.Fire("PLAYER_REGEN_ENABLED")
+	W.inCombat = true
+	W.Fire("PLAYER_REGEN_DISABLED")
+	H.Equal(RangeText(Range), "Mark your target", "a new fight needs a new mark")
+end)
+
+test("mark: follows your mark on enemy nameplates by its aura ID", function()
+	local W, Range = Setup()
+	W.cvars.nameplateMaxDistance = "41"
+	-- Two enemies with nameplates. Your Serpent Sting (aura 300) is already on the first.
+	W.plates = { { debuffs = { 300 }, inRange = true }, { debuffs = {}, inRange = true } }
+	W.targetDebuffs = { 300 }
+	Target(W, true, false)
+	W.inCombat = true
+	W.Fire("PLAYER_REGEN_DISABLED")
+	H.Equal(RangeText(Range), "Mark your target", "no mark yet")
+	CastMark(W)
+	W.targetDebuffs = { 300, 512 } -- the mark lands as aura 512
+	W.plates[1].debuffs = { 300, 512 }
+	W.Advance(0.2)
+	H.Equal(RangeText(Range), "Ranged", "marked")
+
+	-- Shooting the other enemy: the mark is still on an enemy you can shoot.
+	W.targetDebuffs = {}
+	W.Fire("PLAYER_TARGET_CHANGED")
+	W.Advance(0.6)
+	H.Equal(RangeText(Range), "Ranged", "no nag while your mark is on an enemy in range")
+	W.plates[1].inRange = false
+	W.Advance(0.6)
+	H.Equal(RangeText(Range), "Mark your target", "the marked enemy ran out of range")
+	W.plates[1].inRange = true
+	W.Advance(0.6)
+	H.Equal(RangeText(Range), "Ranged", "and came back")
+	-- The marked enemy dies: its nameplate goes, and the reminder comes back well
+	-- before the mark's two minutes are up.
+	table.remove(W.plates, 1)
+	W.Advance(0.6)
+	H.Equal(RangeText(Range), "Mark your target", "the marked enemy is gone")
+end)
+
+test("mark: nameplates that don't reach Auto Shot range can't rule a mark out", function()
+	local W, Range = Setup()
+	W.cvars.nameplateMaxDistance = "20" -- the Classic default
+	W.plates = { { debuffs = {}, inRange = true } }
+	Target(W, true, false)
+	W.inCombat = true
+	W.Fire("PLAYER_REGEN_DISABLED")
+	CastMark(W)
+	W.targetDebuffs = { 512 }
+	W.Advance(0.2)
+	-- Switch to the enemy with a nameplate; the marked one has none (past 20 yards).
+	W.targetDebuffs = {}
+	W.Fire("PLAYER_TARGET_CHANGED")
+	W.Advance(0.6)
+	H.Equal(RangeText(Range), "Ranged", "maybe just past nameplate range: no nag")
+end)
+
+test("mark: when your marked target dies, the next target needs a mark", function()
+	local W, Range = Setup()
+	W.auraIDsHidden = true -- even without aura IDs, the death of the marked target is seen
+	Target(W, true, false)
+	W.targetMarked = true -- marked before the pull
+	W.Advance(0.2)
+	W.inCombat = true
+	W.Fire("PLAYER_REGEN_DISABLED")
+	H.Equal(RangeText(Range), "Ranged", "marked")
+	W.targetDead = true
+	W.Advance(0.2)
+	W.targetDead, W.targetMarked = false, false
+	W.Fire("PLAYER_TARGET_CHANGED")
+	H.Equal(RangeText(Range), "Mark your target", "the mark died with the target")
 end)
 
 test("mark: a mark seen before the pull counts in combat", function()

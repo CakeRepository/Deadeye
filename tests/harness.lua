@@ -323,6 +323,26 @@ function FontString:SetWordWrap(wrap)
 	self.wordWrap = wrap
 end
 
+-- Font object sizes, for the wrapped-height estimate below.
+local FONT_SIZES = { GameFontDisableSmall = 10, GameFontHighlightSmall = 10, GameFontNormalSmall = 10 }
+
+-- The height of the text wrapped to the string's width, estimated from average
+-- glyph widths: about half the font size for Latin and Cyrillic letters, the
+-- full size for Korean and Chinese characters (UTF-8 lead bytes from 0xE0).
+function FontString:GetStringHeight()
+	local size = self.font and self.font[2] or FONT_SIZES[self.fontObject] or 12
+	local perLine = self.width and self.width > 0 and self.width / size or math.huge
+	local lines = 0
+	for paragraph in ((self.text or "") .. "\n"):gmatch("(.-)\n") do
+		local ems = 0
+		for char in paragraph:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+			ems = ems + (char:byte() >= 0xE0 and 1 or 0.55)
+		end
+		lines = lines + math.max(1, math.ceil(ems / perLine))
+	end
+	return lines * size * 1.25
+end
+
 ---------------------------------------------------------------------------
 -- Frames
 ---------------------------------------------------------------------------
@@ -819,6 +839,7 @@ function H.NewWorld(options)
 		blocked = {}, -- restricted calls the client would have blocked
 		unknownEvents = options.unknownEvents or {},
 		class = options.class or "HUNTER",
+		locale = options.locale or "enUS",
 		rangedSpeed = rangedSpeed,
 		mainSpeed = options.mainSpeed or 2.6,
 		worldLatency = options.worldLatency or 80,
@@ -830,6 +851,11 @@ function H.NewWorld(options)
 		meleeInRange = nil, -- the same for melee abilities
 		close = nil, -- CheckInteractDistance result (about 10 yards)
 		hasTarget = false,
+		targetDead = false,
+		targetDebuffs = {}, -- aura instance IDs of your debuffs on the target
+		targetMarkID = nil, -- your Hunter's Mark's aura instance ID, when it's on the target
+		plates = {}, -- enemy nameplates: { debuffs = { IDs }, inRange =, dead = }
+		auraIDsHidden = false, -- true: the client keeps aura IDs from addons in combat
 		pet = nil, -- { name =, level =, health =, healthMax =, dead =, happiness =, damage =, loyaltyRate =, loyalty =, diet =, training = { total, used } }
 		dropPoint = nil,
 		bags = {}, -- [bag] = { size = slots, [slot] = { itemID =, count = } }
@@ -948,6 +974,9 @@ function H.NewWorld(options)
 	env.InCombatLockdown = function()
 		return W.inCombat
 	end
+	env.GetLocale = function()
+		return W.locale
+	end
 
 	local function stat(value)
 		if W.statsSecret then
@@ -994,6 +1023,11 @@ function H.NewWorld(options)
 	local MELEE = { ["Raptor Strike"] = true, ["Wing Clip"] = true, ["Mongoose Bite"] = true }
 	env.C_Spell = {
 		IsSpellInRange = function(spell, unit)
+			local plate = W.Plate(unit)
+			if plate then
+				check(spell == 75, "IsSpellInRange: only Auto Shot is checked on nameplates")
+				return plate.inRange
+			end
 			check(unit == "target", "IsSpellInRange: unexpected unit")
 			if spell == 75 then
 				return W.inRange
@@ -1014,8 +1048,15 @@ function H.NewWorld(options)
 			return SPELL_NAMES[spell]
 		end,
 	}
+	-- nameplateN is the Nth entry of W.plates.
+	function W.Plate(unit)
+		local index = type(unit) == "string" and tonumber(unit:match("^nameplate(%d+)$"))
+		return index and W.plates[index]
+	end
 	env.UnitExists = function(unit)
-		if unit == "target" then
+		if W.Plate(unit) then
+			return true
+		elseif unit == "target" then
 			return W.hasTarget
 		elseif unit == "pet" then
 			return W.pet ~= nil
@@ -1023,8 +1064,18 @@ function H.NewWorld(options)
 		return unit == "player"
 	end
 	env.UnitIsDead = function(unit)
-		check(unit == "pet", "UnitIsDead: only the pet is mocked")
+		local plate = W.Plate(unit)
+		if plate then
+			return plate.dead == true
+		elseif unit == "target" then
+			return W.hasTarget and W.targetDead == true
+		end
+		check(unit == "pet", "UnitIsDead: unexpected unit " .. tostring(unit))
 		return W.pet ~= nil and W.pet.dead == true
+	end
+	env.UnitCanAttack = function(unit, other)
+		check(unit == "player", "UnitCanAttack: only the player attacks")
+		return W.Plate(other) ~= nil or (other == "target" and W.hasTarget)
 	end
 	env.UnitName = function(unit)
 		check(unit == "pet", "UnitName: only the pet is mocked")
@@ -1105,7 +1156,27 @@ function H.NewWorld(options)
 			if W.inCombat and not W.markReadableInCombat then
 				return nil
 			end
-			return W.targetMarked and { name = name } or nil
+			return W.targetMarked and { name = name, auraInstanceID = W.targetMarkID, expirationTime = 0 } or nil
+		end,
+		-- Aura instance IDs are plain numbers even in combat (unless a test hides them).
+		GetUnitAuraInstanceIDs = function(unit, filter)
+			check(filter == "HARMFUL|PLAYER", "GetUnitAuraInstanceIDs: unexpected filter " .. tostring(filter))
+			local ids = {}
+			if W.inCombat and W.auraIDsHidden then
+				return ids
+			end
+			local plate = W.Plate(unit)
+			local source = plate and plate.debuffs or (unit == "target" and W.hasTarget and W.targetDebuffs) or {}
+			for i, id in ipairs(source) do
+				ids[i] = id
+			end
+			return ids
+		end,
+	}
+	env.C_Secrets = {
+		ShouldSpellAuraBeSecret = function(spell)
+			check(spell == 1130, "ShouldSpellAuraBeSecret: unexpected spell")
+			return W.inCombat and not W.markReadableInCombat
 		end,
 	}
 	local GAME_ERRORS = {

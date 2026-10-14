@@ -45,7 +45,8 @@ A color-coded strip on top of the bar shows which band your target is in: **mele
 The text above it warns you in combat:
 - **Face your target**
 - **No line of sight**
-- **Mark your target**, if your target has no Hunter's Mark
+- **Mark your target**, if your Hunter's Mark isn't on an enemy you can shoot. One mark is
+  enough: switching targets doesn't nag while your mark is on a living enemy in range.
 
 ## Pet panel
 Happiness, along with the damage bonus or penalty that comes with it, plus health and loyalty.
@@ -73,6 +74,11 @@ Every option also works from chat, for example `/deadeye width 260`, `/deadeye t
 `/deadeye label above` or `/deadeye range show problems`. `/deadeye settings` lists them all.
 
 To move frames, use `/deadeye move`, the **Unlock frames** box, or Blizzard's **Edit Mode**.
+
+## Languages
+Deadeye follows your game's language: English, Deutsch, Español, Français, Italiano, Português
+(Brasil), Русский, 한국어, 简体中文 and 繁體中文. The translations are first drafts, so corrections
+from native speakers are very welcome on GitHub. Chat commands stay in English everywhere.
 
 ## Notes
 - Hunters only.

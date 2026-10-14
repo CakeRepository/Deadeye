@@ -8,6 +8,21 @@ ns.title = "|cffaad372Deadeye|r"
 ns.version = C_AddOns and C_AddOns.GetAddOnMetadata(addonName, "Version") or "dev"
 
 ---------------------------------------------------------------------------
+-- Translations
+---------------------------------------------------------------------------
+-- Every text the player sees goes through L: L["English text"] is the text in
+-- the game's language (from Locales\<locale>.lua), or the English text itself
+-- when there is no translation. Translations keep the %s / %d placeholders of
+-- the English text, in the same order.
+ns.locale = GetLocale()
+ns.L = setmetatable({}, {
+	__index = function(_, text)
+		return text
+	end,
+})
+local L = ns.L
+
+---------------------------------------------------------------------------
 -- Secret values
 ---------------------------------------------------------------------------
 -- Forever runs the Midnight (12.x) addon rules: in combat, APIs such as
@@ -201,14 +216,15 @@ function ns:RegisterCommand(name, usage, description, handler)
 end
 
 local function PrintHelp()
-	ns.Print("v" .. ns.version .. " - /deadeye (or /deye) opens the options. Commands:")
+	ns.Print("v" .. ns.version .. " - " .. L["/deadeye (or /deye) opens the options. Commands:"])
 	for _, name in ipairs(commandOrder) do
 		local command = commands[name]
 		if command.description then
 			print(string.format("  |cffffd100/deadeye %s|r  %s", command.usage, command.description))
 		end
 	end
-	print("  Any setting: |cffffd100/deadeye <setting> <value>|r, e.g. /deadeye width 250 or /deadeye texture flat.")
+	print(string.format("  %s |cffffd100/deadeye <setting> <value>|r  %s", L["Any setting:"],
+		L["for example /deadeye width 250 or /deadeye texture flat"]))
 end
 
 function ns:RunCommand(input)
@@ -226,7 +242,7 @@ function ns:RunCommand(input)
 	if command then
 		command.handler(rest)
 	elseif not ns.Slash.Handle(ns.Slash.MainModule(), name, rest) then
-		ns.Print("Unknown command or setting '" .. name .. "'. Type /deadeye help or /deadeye settings.")
+		ns.Print(L["Unknown command or setting '%s'. Type /deadeye help or /deadeye settings."]:format(name))
 	end
 end
 
@@ -240,7 +256,7 @@ local function RegisterCoreCommands()
 	local function OpenOptions()
 		ns.OptionsWindow:Open()
 	end
-	ns:RegisterCommand("move", "move", "Unlock every Deadeye frame to drag it; run again to lock.", function()
+	ns:RegisterCommand("move", "move", L["Unlock every Deadeye frame to drag it; run again to lock."], function()
 		ns:SetLocked(not ns.db.locked)
 	end)
 	ns:RegisterCommand("lock", "lock", nil, function()
@@ -249,15 +265,15 @@ local function RegisterCoreCommands()
 	ns:RegisterCommand("unlock", "unlock", nil, function()
 		ns:SetLocked(false)
 	end)
-	ns:RegisterCommand("options", "options", "Open the options window (or just type /deadeye).", OpenOptions)
+	ns:RegisterCommand("options", "options", L["Open the options window (or just type /deadeye)."], OpenOptions)
 	ns:RegisterCommand("config", "config", nil, OpenOptions)
-	ns:RegisterCommand("debug", "debug", "Log Auto Shot events to chat (useful for bug reports).", function()
+	ns:RegisterCommand("debug", "debug", L["Log Auto Shot events to chat (useful for bug reports)."], function()
 		ns.db.debug = not ns.db.debug
-		ns.Print("Debug logging", ns.db.debug and "on." or "off.")
+		ns.Print(ns.db.debug and L["Debug logging on."] or L["Debug logging off."])
 	end)
-	ns:RegisterCommand("reset", "reset", "Reset all settings and the bar position.", function()
+	ns:RegisterCommand("reset", "reset", L["Reset all settings and the bar position."], function()
 		ns:ResetSettings()
-		ns.Print("Settings reset to defaults.")
+		ns.Print(L["Settings reset to defaults."])
 	end)
 end
 
@@ -278,9 +294,9 @@ function Deadeye_OnAddonCompartmentEnter(_, button)
 	end
 	GameTooltip:SetOwner(button, "ANCHOR_LEFT")
 	GameTooltip:SetText(ns.title)
-	GameTooltip:AddLine("Left-click: options", 1, 1, 1)
-	GameTooltip:AddLine("Right-click: unlock or lock the frames", 1, 1, 1)
-	GameTooltip:AddLine("/deadeye help lists every command", 0.7, 0.7, 0.7)
+	GameTooltip:AddLine(L["Left-click: options"], 1, 1, 1)
+	GameTooltip:AddLine(L["Right-click: unlock or lock the frames"], 1, 1, 1)
+	GameTooltip:AddLine(L["/deadeye help lists every command"], 0.7, 0.7, 0.7)
 	GameTooltip:Show()
 end
 
