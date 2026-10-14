@@ -1,0 +1,9 @@
+package-as: ForeverHunter
+
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
+
+ignore:
+  - tests
+  - docs

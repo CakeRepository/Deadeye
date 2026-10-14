@@ -1,0 +1,4 @@
+.release/
+dist/
+*.zip
+__pycache__/
