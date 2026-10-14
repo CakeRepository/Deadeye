@@ -322,7 +322,7 @@ end
 function Widgets.Create(parent, spec, width, module)
 	local build = Widgets[spec.type]
 	if not build then
-		error("ForeverHunter: unknown option type " .. tostring(spec.type))
+		error("Deadeye: unknown option type " .. tostring(spec.type))
 	end
 	local get, set = Widgets.Accessors(module, spec)
 	local widget = build(parent, spec, width, get, set)

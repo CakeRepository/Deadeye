@@ -1,10 +1,10 @@
--- ForeverHunter: a hunter toolkit for World of Warcraft: Forever.
+-- Deadeye: a hunter toolkit for World of Warcraft: Forever.
 -- Core: saved variables, the module registry, slash commands and shared helpers.
 -- Features live in Modules\*.lua and register themselves with ns:NewModule().
 local addonName, ns = ...
 
 ns.name = addonName
-ns.title = "|cffaad372Forever|rHunter"
+ns.title = "|cffaad372Deadeye|r"
 ns.version = C_AddOns and C_AddOns.GetAddOnMetadata(addonName, "Version") or "dev"
 
 ---------------------------------------------------------------------------
@@ -85,7 +85,7 @@ end
 --   module:OnSettingsReset()  module.db was just reset to its defaults
 --   module:GetOptionSections() pages for the options window (see Options\Window.lua)
 --   module:SetPreview(on)     the options window opened or closed
--- module.db is the module's own table inside ForeverHunterDB.modules.
+-- module.db is the module's own table inside DeadeyeDB.modules.
 ns.modules = {}
 local moduleOrder = {}
 
@@ -151,13 +151,13 @@ end
 function ns.OptionsChanged() end
 
 local function InitializeDB()
-	if type(ForeverHunterDB) ~= "table" then
-		ForeverHunterDB = {}
+	if type(DeadeyeDB) ~= "table" then
+		DeadeyeDB = {}
 	end
-	local db = ForeverHunterDB
+	local db = DeadeyeDB
 	db.version = db.version or 1
 	if db.locked == nil then
-		db.locked = true -- one lock for every ForeverHunter frame (see Frames.lua)
+		db.locked = true -- one lock for every Deadeye frame (see Frames.lua)
 	end
 	if type(db.modules) ~= "table" then
 		db.modules = {}
@@ -176,7 +176,7 @@ local function InitializeDB()
 end
 
 function ns:ResetSettings()
-	ForeverHunterDB.modules = {}
+	DeadeyeDB.modules = {}
 	InitializeDB()
 	for _, module in ipairs(moduleOrder) do
 		if module.enabled and module.OnSettingsReset then
@@ -187,11 +187,11 @@ function ns:ResetSettings()
 end
 
 ---------------------------------------------------------------------------
--- Slash commands: /fh <command> [args]
+-- Slash commands: /deadeye <command> [args]
 ---------------------------------------------------------------------------
 local commands, commandOrder = {}, {}
 
--- usage is what /fh help prints (e.g. "scale <0.5-3>"); commands without a
+-- usage is what /deadeye help prints (e.g. "scale <0.5-3>"); commands without a
 -- description still work but are left out of the help list.
 function ns:RegisterCommand(name, usage, description, handler)
 	if not commands[name] then
@@ -201,14 +201,14 @@ function ns:RegisterCommand(name, usage, description, handler)
 end
 
 local function PrintHelp()
-	ns.Print("v" .. ns.version .. " - /fh opens the options. Commands:")
+	ns.Print("v" .. ns.version .. " - /deadeye (or /deye) opens the options. Commands:")
 	for _, name in ipairs(commandOrder) do
 		local command = commands[name]
 		if command.description then
-			print(string.format("  |cffffd100/fh %s|r  %s", command.usage, command.description))
+			print(string.format("  |cffffd100/deadeye %s|r  %s", command.usage, command.description))
 		end
 	end
-	print("  Any setting: |cffffd100/fh <setting> <value>|r, e.g. /fh width 250 or /fh texture flat.")
+	print("  Any setting: |cffffd100/deadeye <setting> <value>|r, e.g. /deadeye width 250 or /deadeye texture flat.")
 end
 
 function ns:RunCommand(input)
@@ -226,13 +226,13 @@ function ns:RunCommand(input)
 	if command then
 		command.handler(rest)
 	elseif not ns.Slash.Handle(ns.Slash.MainModule(), name, rest) then
-		ns.Print("Unknown command or setting '" .. name .. "'. Type /fh help or /fh settings.")
+		ns.Print("Unknown command or setting '" .. name .. "'. Type /deadeye help or /deadeye settings.")
 	end
 end
 
-SLASH_FOREVERHUNTER1 = "/fh"
-SLASH_FOREVERHUNTER2 = "/foreverhunter"
-SlashCmdList.FOREVERHUNTER = function(input)
+SLASH_DEADEYE1 = "/deadeye"
+SLASH_DEADEYE2 = "/deye"
+SlashCmdList.DEADEYE = function(input)
 	ns:RunCommand(input)
 end
 
@@ -240,7 +240,7 @@ local function RegisterCoreCommands()
 	local function OpenOptions()
 		ns.OptionsWindow:Open()
 	end
-	ns:RegisterCommand("move", "move", "Unlock every ForeverHunter frame to drag it; run again to lock.", function()
+	ns:RegisterCommand("move", "move", "Unlock every Deadeye frame to drag it; run again to lock.", function()
 		ns:SetLocked(not ns.db.locked)
 	end)
 	ns:RegisterCommand("lock", "lock", nil, function()
@@ -249,7 +249,7 @@ local function RegisterCoreCommands()
 	ns:RegisterCommand("unlock", "unlock", nil, function()
 		ns:SetLocked(false)
 	end)
-	ns:RegisterCommand("options", "options", "Open the options window (or just type /fh).", OpenOptions)
+	ns:RegisterCommand("options", "options", "Open the options window (or just type /deadeye).", OpenOptions)
 	ns:RegisterCommand("config", "config", nil, OpenOptions)
 	ns:RegisterCommand("debug", "debug", "Log Auto Shot events to chat (useful for bug reports).", function()
 		ns.db.debug = not ns.db.debug
@@ -264,7 +264,7 @@ end
 ---------------------------------------------------------------------------
 -- Addon compartment (the addon button on the minimap)
 ---------------------------------------------------------------------------
-function ForeverHunter_OnAddonCompartmentClick(_, buttonName)
+function Deadeye_OnAddonCompartmentClick(_, buttonName)
 	if buttonName == "RightButton" then
 		ns:RunCommand("move")
 	else
@@ -272,19 +272,19 @@ function ForeverHunter_OnAddonCompartmentClick(_, buttonName)
 	end
 end
 
-function ForeverHunter_OnAddonCompartmentEnter(_, button)
+function Deadeye_OnAddonCompartmentEnter(_, button)
 	if not button then
 		return
 	end
 	GameTooltip:SetOwner(button, "ANCHOR_LEFT")
 	GameTooltip:SetText(ns.title)
 	GameTooltip:AddLine("Left-click: options", 1, 1, 1)
-	GameTooltip:AddLine("Right-click: unlock or lock the Auto Shot bar", 1, 1, 1)
-	GameTooltip:AddLine("/fh help lists every command", 0.7, 0.7, 0.7)
+	GameTooltip:AddLine("Right-click: unlock or lock the frames", 1, 1, 1)
+	GameTooltip:AddLine("/deadeye help lists every command", 0.7, 0.7, 0.7)
 	GameTooltip:Show()
 end
 
-function ForeverHunter_OnAddonCompartmentLeave()
+function Deadeye_OnAddonCompartmentLeave()
 	GameTooltip:Hide()
 end
 

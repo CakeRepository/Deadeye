@@ -229,7 +229,7 @@ function Range:Refresh()
 end
 
 function Range:BuildFrame()
-	local frame = CreateFrame("Frame", "ForeverHunterRangeFrame", UIParent)
+	local frame = CreateFrame("Frame", "DeadeyeRangeFrame", UIParent)
 	frame:SetFrameStrata("MEDIUM")
 	frame.text = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	frame.strip = CreateFrame("Frame", nil, frame)

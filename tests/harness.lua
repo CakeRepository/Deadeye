@@ -1,4 +1,4 @@
--- A small stand-in for the WoW: Forever client, just enough to load ForeverHunter
+-- A small stand-in for the WoW: Forever client, just enough to load Deadeye
 -- outside the game and drive it with events, clicks and a fake clock.
 --
 -- Each test gets its own "world": a fresh global environment, clock, frames and
@@ -49,9 +49,13 @@ local TEMPLATES = {
 	CheckButton = { MinimalCheckboxTemplate = true, UICheckButtonTemplate = true },
 	Slider = { UISliderTemplate = true },
 	EditBox = { InputBoxTemplate = true },
-	Button = { UIPanelButtonTemplate = true, UIPanelCloseButton = true },
+	Button = { UIPanelButtonTemplate = true, UIPanelCloseButton = true, SecureActionButtonTemplate = true },
 	DropdownButton = { WowStyle1DropdownTemplate = true },
 }
+local CLICKS = {}
+for _, button in ipairs({ "Any", "LeftButton", "RightButton", "MiddleButton" }) do
+	CLICKS[button .. "Up"], CLICKS[button .. "Down"] = true, true
+end
 local FRAME_TYPES = {
 	Frame = true, StatusBar = true, Button = true, CheckButton = true,
 	Slider = true, EditBox = true, DropdownButton = true,
@@ -59,12 +63,12 @@ local FRAME_TYPES = {
 
 -- Globals the addon is expected to create, or to read before they exist.
 local ADDON_GLOBALS = {
-	ForeverHunterDB = true,
-	SLASH_FOREVERHUNTER1 = true,
-	SLASH_FOREVERHUNTER2 = true,
-	ForeverHunter_OnAddonCompartmentClick = true,
-	ForeverHunter_OnAddonCompartmentEnter = true,
-	ForeverHunter_OnAddonCompartmentLeave = true,
+	DeadeyeDB = true,
+	SLASH_DEADEYE1 = true,
+	SLASH_DEADEYE2 = true,
+	Deadeye_OnAddonCompartmentClick = true,
+	Deadeye_OnAddonCompartmentEnter = true,
+	Deadeye_OnAddonCompartmentLeave = true,
 }
 -- Optional globals that are simply absent unless another addon provides them.
 local OPTIONAL_GLOBALS = { LibStub = true }
@@ -272,6 +276,10 @@ function Texture:SetVertexColor(r, g, b, a)
 	self.vertexColor = { r, g, b, a or 1 }
 end
 
+function Texture:SetDesaturated(desaturated)
+	self.desaturated = not not desaturated
+end
+
 local FontString = setmetatable({}, { __index = Region })
 FontString.__index = FontString
 
@@ -321,7 +329,53 @@ end
 local Frame = setmetatable({}, { __index = Region })
 Frame.__index = Frame
 
+-- A frame is protected if it comes from a secure template, or if a protected
+-- frame is its child (at any depth) or is anchored to it. In combat the client
+-- blocks the protected methods below on such frames (ADDON_ACTION_BLOCKED); the
+-- mock records the call in world.blocked and leaves the frame as it was.
+local function IsProtected(frame)
+	if frame.protected then
+		return true
+	end
+	for _, secure in ipairs(frame.world.protectedFrames) do
+		local parent = secure.parent
+		while parent do
+			if parent == frame then
+				return true
+			end
+			parent = parent.parent
+		end
+		for _, point in ipairs(secure.points) do
+			if point[2] == frame then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+local function Blocked(frame, method)
+	if frame.world.inCombat and IsProtected(frame) then
+		local blocked = frame.world.blocked
+		blocked[#blocked + 1] = method .. " on " .. (frame.name or "a protected frame")
+		return true
+	end
+	return false
+end
+
+for _, method in ipairs({ "SetPoint", "ClearAllPoints", "SetAllPoints", "SetSize", "SetWidth", "SetHeight" }) do
+	local base = Region[method]
+	Frame[method] = function(self, ...)
+		if not Blocked(self, method) then
+			return base(self, ...)
+		end
+	end
+end
+
 function Frame:Show()
+	if Blocked(self, "Show") then
+		return
+	end
 	local was = self.shown
 	self.shown = true
 	if not was and self.scripts.OnShow then
@@ -330,6 +384,9 @@ function Frame:Show()
 end
 
 function Frame:Hide()
+	if Blocked(self, "Hide") then
+		return
+	end
 	local was = self.shown
 	self.shown = false
 	if was and self.scripts.OnHide then
@@ -344,7 +401,19 @@ end
 function Frame:SetScript(name, handler)
 	check(SCRIPTS[name], "SetScript: unknown script " .. tostring(name))
 	check(handler == nil or type(handler) == "function", "SetScript: function expected")
+	check(not (self.protected and name == "OnClick"), "SetScript: OnClick would replace the secure click handler")
 	self.scripts[name] = handler
+end
+
+function Frame:SetAttribute(name, value)
+	check(type(name) == "string", "SetAttribute: name expected")
+	if not Blocked(self, "SetAttribute") then
+		self.attributes[name] = value
+	end
+end
+
+function Frame:GetAttribute(name)
+	return self.attributes[name]
 end
 
 function Frame:GetScript(name)
@@ -393,7 +462,9 @@ end
 
 function Frame:SetFrameStrata(strata)
 	check(STRATA[strata], "SetFrameStrata: bad strata " .. tostring(strata))
-	self.strata = strata
+	if not Blocked(self, "SetFrameStrata") then
+		self.strata = strata
+	end
 end
 
 function Frame:SetFrameLevel(level)
@@ -433,7 +504,9 @@ function Frame:RegisterForDrag(...)
 end
 
 function Frame:EnableMouse(enabled)
-	self.mouseEnabled = not not enabled
+	if not Blocked(self, "EnableMouse") then
+		self.mouseEnabled = not not enabled
+	end
 end
 
 function Frame:StartMoving()
@@ -452,7 +525,9 @@ end
 
 function Frame:SetScale(scale)
 	check(isNumber(scale) and scale > 0, "SetScale: positive number expected")
-	self.scale = scale
+	if not Blocked(self, "SetScale") then
+		self.scale = scale
+	end
 end
 
 function Frame:GetScale()
@@ -529,6 +604,15 @@ end
 function Button:Click(mouseButton)
 	if self:IsEnabled() and self.scripts.OnClick then
 		self.scripts.OnClick(self, mouseButton or "LeftButton", false)
+	end
+end
+
+function Button:RegisterForClicks(...)
+	self.clicks = {}
+	for i = 1, select("#", ...) do
+		local click = select(i, ...)
+		check(CLICKS[click], "RegisterForClicks: bad click type " .. tostring(click))
+		self.clicks[click] = true
 	end
 end
 
@@ -695,6 +779,20 @@ local CLASSES = {
 ---------------------------------------------------------------------------
 -- World
 ---------------------------------------------------------------------------
+-- A few Classic foods (real item ids and levels) for the pet tests. diet is
+-- the food type a pet must eat; buff food makes you well fed.
+local ITEMS = {
+	[117] = { name = "Tough Jerky", level = 5, diet = "Meat", icon = 133972 },
+	[2287] = { name = "Haunch of Meat", level = 15, diet = "Meat", icon = 133970 },
+	[3770] = { name = "Mutton Chop", level = 25, diet = "Meat", icon = 133974 },
+	[3771] = { name = "Wild Hog Shank", level = 35, diet = "Meat", icon = 133971 },
+	[8952] = { name = "Roasted Quail", level = 55, diet = "Meat", icon = 133973 },
+	[12210] = { name = "Roast Raptor", level = 35, diet = "Meat", icon = 133969, buff = true },
+	[787] = { name = "Slitherskin Mackerel", level = 5, diet = "Fish", icon = 133918 },
+	[4540] = { name = "Tough Hunk of Bread", level = 5, diet = "Bread", icon = 133964 },
+	[159] = { name = "Refreshing Spring Water", level = 5, icon = 132794 },
+}
+
 local STDLIB = {
 	"assert", "error", "ipairs", "next", "pairs", "pcall", "rawequal", "rawget", "rawset",
 	"select", "setmetatable", "getmetatable", "tonumber", "tostring", "type", "unpack", "xpcall",
@@ -732,9 +830,21 @@ function H.NewWorld(options)
 		meleeInRange = nil, -- the same for melee abilities
 		close = nil, -- CheckInteractDistance result (about 10 yards)
 		hasTarget = false,
-		pet = nil, -- { name =, health =, healthMax =, dead =, happiness =, damage =, loyaltyRate =, loyalty =, diet =, training = { total, used } }
+		pet = nil, -- { name =, level =, health =, healthMax =, dead =, happiness =, damage =, loyaltyRate =, loyalty =, diet =, training = { total, used } }
 		dropPoint = nil,
+		bags = {}, -- [bag] = { size = slots, [slot] = { itemID =, count = } }
+		items = {}, -- [itemID] = { name =, level =, diet =, icon =, buff =, uncached = } (ITEMS)
+		protectedFrames = {},
+		casts = {}, -- spells cast by secure buttons
+		used = {}, -- { bag =, slot = } items a secure button used as a spell's target
 	}
+	for itemID, item in pairs(ITEMS) do
+		local copy = {}
+		for key, value in pairs(item) do
+			copy[key] = value
+		end
+		W.items[itemID] = copy
+	end
 	local env = {}
 	W.env = env
 	for _, name in ipairs(STDLIB) do
@@ -744,7 +854,7 @@ function H.NewWorld(options)
 	local function NewFrame(frameType, name, parent)
 		local frame = setmetatable({
 			world = W, frameType = frameType, name = name, parent = parent, shown = true,
-			alpha = 1, scale = 1, points = {}, scripts = {}, events = {},
+			alpha = 1, scale = 1, points = {}, scripts = {}, events = {}, attributes = {},
 		}, CLASSES[frameType])
 		W.frames[#W.frames + 1] = frame
 		if name then
@@ -753,12 +863,48 @@ function H.NewWorld(options)
 		return frame
 	end
 
+	-- What SecureActionButton_OnClick (SecureTemplates.lua) does for type
+	-- "spell": cast the spell, then, if it waits for an item target, use the
+	-- item at target-bag / target-slot. It acts on the press or on the release,
+	-- whichever the ActionButtonUseKeyDown setting picks, and ignores the other.
+	local SUFFIXES = { LeftButton = "1", RightButton = "2", MiddleButton = "3" }
+	local function SecureClick(button, mouseButton, down)
+		if down ~= (W.cvars.ActionButtonUseKeyDown == "1") then
+			return
+		end
+		local suffix = SUFFIXES[mouseButton] or ""
+		local function Attribute(name)
+			local value = button:GetAttribute(name .. suffix)
+			if value == nil then
+				value = button:GetAttribute(name)
+			end
+			return value
+		end
+		if Attribute("type") == "spell" then
+			local spell = Attribute("spell")
+			W.casts[#W.casts + 1] = spell
+			local slot = Attribute("target-slot")
+			if spell == 6991 and slot then -- Feed Pet waits for an item target
+				W.used[#W.used + 1] = { bag = Attribute("target-bag"), slot = slot }
+			end
+		end
+	end
+
 	env.CreateFrame = function(frameType, name, parent, template)
 		check(FRAME_TYPES[frameType], "CreateFrame: unsupported type " .. tostring(frameType))
 		check(template == nil or (TEMPLATES[frameType] and TEMPLATES[frameType][template]),
 			"CreateFrame: unknown template " .. tostring(template) .. " for " .. frameType)
 		check(name == nil or type(name) == "string", "CreateFrame: name must be a string")
-		return NewFrame(frameType, name, parent)
+		local frame = NewFrame(frameType, name, parent)
+		if template == "SecureActionButtonTemplate" then
+			if W.inCombat then
+				W.blocked[#W.blocked + 1] = "CreateFrame of a secure button"
+			end
+			frame.protected = true
+			W.protectedFrames[#W.protectedFrames + 1] = frame
+			frame.scripts.OnClick = SecureClick
+		end
+		return frame
 	end
 	env.UIParent = NewFrame("Frame", nil, nil)
 	env.UIParent.isUIParent = true
@@ -842,7 +988,9 @@ function H.NewWorld(options)
 	local SPELL_NAMES = {
 		[75] = "Auto Shot", [2973] = "Raptor Strike", [2974] = "Wing Clip", [1495] = "Mongoose Bite",
 		[1130] = "Hunter's Mark", [14325] = "Hunter's Mark", [3044] = "Arcane Shot",
+		[6991] = "Feed Pet", [19705] = "Well Fed",
 	}
+	local SPELL_TEXTURES = { [75] = 132222, [6991] = 132165 }
 	local MELEE = { ["Raptor Strike"] = true, ["Wing Clip"] = true, ["Mongoose Bite"] = true }
 	env.C_Spell = {
 		IsSpellInRange = function(spell, unit)
@@ -859,8 +1007,8 @@ function H.NewWorld(options)
 			return nil -- not learned yet
 		end,
 		GetSpellTexture = function(spell)
-			check(spell == 75, "GetSpellTexture: unexpected spell")
-			return 132222, 132222
+			check(SPELL_TEXTURES[spell], "GetSpellTexture: unexpected spell " .. tostring(spell))
+			return SPELL_TEXTURES[spell], SPELL_TEXTURES[spell]
 		end,
 		GetSpellName = function(spell)
 			return SPELL_NAMES[spell]
@@ -890,6 +1038,55 @@ function H.NewWorld(options)
 		check(unit == "pet", "UnitHealthMax: only the pet is mocked")
 		return W.pet and W.pet.healthMax or 0
 	end
+	env.UnitLevel = function(unit)
+		check(unit == "pet", "UnitLevel: only the pet is mocked")
+		return W.pet and W.pet.level or 0
+	end
+	-- Bags hold { itemID, count } entries; the item details come from W.items.
+	env.C_Container = {
+		GetContainerNumSlots = function(bag)
+			check(isNumber(bag), "GetContainerNumSlots: bag index expected")
+			return W.bags[bag] and W.bags[bag].size or 0
+		end,
+		GetContainerItemInfo = function(bag, slot)
+			check(isNumber(bag) and isNumber(slot), "GetContainerItemInfo: bag and slot expected")
+			local entry = W.bags[bag] and W.bags[bag][slot]
+			if not entry then
+				return nil
+			end
+			local item = W.items[entry.itemID] or {}
+			return {
+				itemID = entry.itemID, stackCount = entry.count or 1, iconFileID = item.icon or 134400,
+				itemName = item.name or "", hyperlink = "|Hitem:" .. entry.itemID .. "|h", quality = 1,
+				isLocked = false, isBound = false,
+			}
+		end,
+	}
+	env.C_Item = {
+		GetItemInfo = function(itemID)
+			check(isNumber(itemID), "C_Item.GetItemInfo: item id expected")
+			local item = W.items[itemID]
+			if not item or item.uncached then
+				return nil -- not in the client's item cache yet
+			end
+			return item.name, "|Hitem:" .. itemID .. "|h", 1, item.level, math.max(1, item.level - 10),
+				"Consumable", "Food & Drink", 20, "", item.icon or 134400
+		end,
+	}
+	env.C_TooltipInfo = {
+		GetItemByID = function(itemID)
+			check(isNumber(itemID), "GetItemByID: item id expected")
+			local item = W.items[itemID]
+			if not item then
+				return nil
+			end
+			local use = "Use: Restores 243 health over 21 sec. Must remain seated while eating."
+			if item.buff then
+				use = use .. " If you spend at least 10 seconds eating you will become well fed and gain 6 Stamina and Spirit for 15 min."
+			end
+			return { type = 0, id = itemID, lines = { { leftText = item.name, type = 22 }, { leftText = use, type = 44 } } }
+		end,
+	}
 	env.CheckInteractDistance = function(unit, index)
 		check(unit == "target" and index == 3, "CheckInteractDistance: unexpected arguments")
 		if W.inCombat then
@@ -919,7 +1116,7 @@ function H.NewWorld(options)
 		check(isNumber(index), "GetGameMessageInfo: index expected")
 		return GAME_ERRORS[index]
 	end
-	W.cvars = { cameraDistanceMaxZoomFactor = "1.9" }
+	W.cvars = { cameraDistanceMaxZoomFactor = "1.9", ActionButtonUseKeyDown = "1" }
 	env.C_CVar = {
 		SetCVar = function(name, value)
 			check(type(name) == "string" and type(value) == "string", "SetCVar: strings expected")
@@ -950,6 +1147,16 @@ function H.NewWorld(options)
 			end
 			return 0, 0
 		end,
+		CanPetEatItem = function(itemID)
+			check(isNumber(itemID), "CanPetEatItem: item id expected")
+			local item = W.items[itemID]
+			for _, diet in ipairs(W.pet and item and W.pet.diet or {}) do
+				if diet == item.diet then
+					return true
+				end
+			end
+			return false
+		end,
 	}
 	env.C_SwingTimer = {
 		IsTargetWithinSwingRange = function(swingType)
@@ -959,7 +1166,7 @@ function H.NewWorld(options)
 	}
 	env.C_AddOns = {
 		GetAddOnMetadata = function(addon, field)
-			if addon == "ForeverHunter" and field == "Version" then
+			if addon == "Deadeye" and field == "Version" then
 				return "0.2.0"
 			end
 		end,
@@ -1027,7 +1234,7 @@ function H.NewWorld(options)
 		end,
 	}
 	if options.savedVariables then
-		env.ForeverHunterDB = options.savedVariables
+		env.DeadeyeDB = options.savedVariables
 	end
 	for name in pairs(options.missingGlobals or {}) do
 		env[name] = nil
@@ -1096,7 +1303,28 @@ function H.NewWorld(options)
 	end
 
 	function W.Slash(input)
-		W.env.SlashCmdList.FOREVERHUNTER(input)
+		W.env.SlashCmdList.DEADEYE(input)
+	end
+
+	-- A mouse click: the press, then the release, each running OnMouseDown /
+	-- OnMouseUp and, if the button registered that click, OnClick.
+	function W.Click(frame, mouseButton)
+		mouseButton = mouseButton or "LeftButton"
+		local clicks = frame.clicks or { LeftButtonUp = true } -- a Button's default
+		for _, down in ipairs({ true, false }) do
+			local direction = down and "Down" or "Up"
+			local script = frame.scripts["OnMouse" .. direction]
+			if script then
+				script(frame, mouseButton)
+			end
+			if frame.scripts.OnClick and (clicks["Any" .. direction] or clicks[mouseButton .. direction]) then
+				frame.scripts.OnClick(frame, mouseButton, down)
+			end
+		end
+	end
+
+	function W.IsProtected(frame)
+		return IsProtected(frame)
 	end
 
 	function W.Printed(pattern)
@@ -1140,7 +1368,7 @@ end
 -- order, called with (addonName, namespace), then the login event sequence.
 function H.LoadAddon(W, root)
 	local files = {}
-	for line in io.lines(root .. "/ForeverHunter.toc") do
+	for line in io.lines(root .. "/Deadeye.toc") do
 		line = line:gsub("\r", "")
 		if line ~= "" and not line:find("^##") then
 			files[#files + 1] = line:gsub("\\", "/")
@@ -1150,10 +1378,10 @@ function H.LoadAddon(W, root)
 	for _, file in ipairs(files) do
 		local chunk = assert(loadfile(root .. "/" .. file))
 		setfenv(chunk, W.env)
-		chunk("ForeverHunter", ns)
+		chunk("Deadeye", ns)
 	end
 	W.ns = ns
-	W.Fire("ADDON_LOADED", "ForeverHunter")
+	W.Fire("ADDON_LOADED", "Deadeye")
 	W.Fire("PLAYER_LOGIN")
 	W.Fire("PLAYER_ENTERING_WORLD", true, false)
 	return ns

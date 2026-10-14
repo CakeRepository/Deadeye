@@ -1,4 +1,4 @@
-"""Run the ForeverHunter tests on Lua 5.1 (the version WoW uses) through lupa.
+"""Run the Deadeye tests on Lua 5.1 (the version WoW uses) through lupa.
 
     pip install lupa
     python tests/run_tests.py

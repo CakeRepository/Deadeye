@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.3.0-beta
+
+- **Renamed to Deadeye.** Another addon already uses the name ForeverHunter. The chat command is
+  now `/deadeye`, with `/deye` as a shortcut. If you have 0.2.0-beta, delete the old
+  `ForeverHunter` folder from `Interface\AddOns`. Its settings don't carry over.
+- **Feed button** beside the pet panel: click it to feed your pet. It picks food close to your
+  pet's level from your bags, lowest level first so your better food lasts, and saves food that
+  makes you well fed for you. Right-click it to skip a food (`/fh pet unskip` to undo). With no
+  food your pet eats, a click casts Feed Pet so you can pick one yourself. It lights up while your
+  pet isn't happy, and catches up after a fight, since Blizzard locks such buttons in combat.
+- New **Pet: feeding** options page with the feed button, the feed alert and skipped food.
+
 ## v0.2.0-beta
 
 First public beta for WoW: Forever (1.60.1).

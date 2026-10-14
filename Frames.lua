@@ -1,5 +1,5 @@
--- Shared handling for ForeverHunter's on-screen frames (the Auto Shot bar, the
--- range text, the pet panel). They can be dragged while unlocked (/fh move) or
+-- Shared handling for Deadeye's on-screen frames (the Auto Shot bar, the
+-- range text, the pet panel). They can be dragged while unlocked (/deadeye move) or
 -- while Blizzard's Edit Mode is open. Each module keeps its frame's position in
 -- module.db.position as the offset of the frame's center from the screen
 -- center, in UIParent units, so it does not shift when the frame's scale changes.
@@ -32,7 +32,7 @@ function ns:SetLocked(locked, quiet)
 	ns.db.locked = locked
 	NotifyModules()
 	if not quiet then
-		ns.Print(locked and "Frames locked." or "Frames unlocked: drag the blue boxes where you want them, then type /fh lock.")
+		ns.Print(locked and "Frames locked." or "Frames unlocked: drag the blue boxes where you want them, then type /deadeye lock.")
 	end
 end
 
@@ -41,7 +41,7 @@ end
 function Frames.MakeMovable(module, frame, label, keepMouse)
 	frame:SetMovable(true)
 	frame:SetClampedToScreen(true)
-	frame:SetDontSavePosition(true) -- positions live in ForeverHunterDB
+	frame:SetDontSavePosition(true) -- positions live in DeadeyeDB
 	frame:RegisterForDrag("LeftButton")
 	frame:SetScript("OnDragStart", function(self)
 		if ns:IsUnlocked() then
@@ -124,7 +124,7 @@ function Frames.PositionOptions(module)
 	}
 end
 
--- Blizzard's Edit Mode unlocks every ForeverHunter frame while it is open.
+-- Blizzard's Edit Mode unlocks every Deadeye frame while it is open.
 if EventRegistry then
 	EventRegistry:RegisterCallback("EditMode.Enter", function()
 		editMode = true

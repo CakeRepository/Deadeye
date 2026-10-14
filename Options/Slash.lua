@@ -1,8 +1,8 @@
 -- Every setting in the options window can also be changed from chat:
---   /fh <setting> <value>          an Auto Shot bar setting, e.g. /fh width 250
---   /fh range <setting> <value>    a setting of another module (range, pet)
---   /fh <setting>                  show its current value and what it accepts
---   /fh settings [range|pet]       list the settings with their values
+--   /deadeye <setting> <value>          an Auto Shot bar setting, e.g. /deadeye width 250
+--   /deadeye range <setting> <value>    a setting of another module (range, pet)
+--   /deadeye <setting>                  show its current value and what it accepts
+--   /deadeye settings [range|pet]       list the settings with their values
 -- Setting names are the "slash" field of each option (see Options\Window.lua).
 local _, ns = ...
 
@@ -137,7 +137,7 @@ local function Accepts(spec)
 end
 
 local function Command(module, spec)
-	return "/fh " .. (module.slashPrefix and module.slashPrefix .. " " or "") .. spec.slash
+	return "/deadeye " .. (module.slashPrefix and module.slashPrefix .. " " or "") .. spec.slash
 end
 
 local function Settings(module)
@@ -196,7 +196,7 @@ end
 
 function Slash.List(module)
 	local list = Settings(module)
-	ns.Print((module.title or module.name) .. " settings, change one with /fh " .. (module.slashPrefix and module.slashPrefix .. " " or "") .. "<setting> <value>:")
+	ns.Print((module.title or module.name) .. " settings, change one with /deadeye " .. (module.slashPrefix and module.slashPrefix .. " " or "") .. "<setting> <value>:")
 	local section
 	for _, entry in ipairs(list) do
 		if entry.section ~= section then
@@ -209,7 +209,7 @@ function Slash.List(module)
 	end
 end
 
--- Handles /fh <name> <value> for a module. Returns false if name is not one of its settings.
+-- Handles /deadeye <name> <value> for a module. Returns false if name is not one of its settings.
 function Slash.Handle(module, name, text)
 	if not (module and module.enabled and module.GetOptionSections) then
 		return false
@@ -237,12 +237,12 @@ local function SplitFirst(text)
 	return first:lower(), rest
 end
 
--- Registers /fh settings and one /fh <prefix> command per prefixed module.
+-- Registers /deadeye settings and one /deadeye <prefix> command per prefixed module.
 function Slash.RegisterCommands()
 	for _, module in ipairs(ns:GetModules()) do
 		local prefix = module.slashPrefix
 		if prefix then
-			ns:RegisterCommand(prefix, prefix .. " <setting> <value>", "Change " .. (module.title or module.name) .. " settings (/fh " .. prefix .. " settings lists them).", function(text)
+			ns:RegisterCommand(prefix, prefix .. " <setting> <value>", "Change " .. (module.title or module.name) .. " settings (/deadeye " .. prefix .. " settings lists them).", function(text)
 				if not module.enabled then
 					ns.Print((module.title or module.name) .. " only runs on hunters.")
 					return
@@ -253,7 +253,7 @@ function Slash.RegisterCommands()
 				elseif (ON[name] or OFF[name]) and value == "" and Slash.Handle(module, "enabled", name) then
 					return
 				elseif not Slash.Handle(module, name, value) then
-					ns.Print("No " .. prefix .. " setting called '" .. name .. "'. Type /fh " .. prefix .. " settings.")
+					ns.Print("No " .. prefix .. " setting called '" .. name .. "'. Type /deadeye " .. prefix .. " settings.")
 				end
 			end)
 		end
@@ -273,6 +273,6 @@ function Slash.RegisterCommands()
 			ns.Print("Nothing to list for '" .. name .. "'.")
 		end
 	end
-	ns:RegisterCommand("settings", "settings [range|pet]", "List settings you can change with /fh <setting> <value>.", ListSettings)
+	ns:RegisterCommand("settings", "settings [range|pet]", "List settings you can change with /deadeye <setting> <value>.", ListSettings)
 	ns:RegisterCommand("list", "list", nil, ListSettings)
 end

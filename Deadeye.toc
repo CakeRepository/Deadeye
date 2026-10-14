@@ -1,0 +1,24 @@
+## Interface: 16001
+## Title: |cffaad372Deadeye|r
+## Notes: Hunter toolkit for WoW: Forever: Auto Shot reload bar, range indicator, pet panel and feed button. Type /deadeye for options.
+## Author: CakeRepository
+## Version: 0.3.0-beta
+## X-License: MIT
+## X-Website: https://github.com/CakeRepository/Deadeye
+## X-Curse-Project-ID: 1745019
+## SavedVariables: DeadeyeDB
+## IconTexture: Interface\Icons\INV_Weapon_Bow_07
+## AddonCompartmentFunc: Deadeye_OnAddonCompartmentClick
+## AddonCompartmentFuncOnEnter: Deadeye_OnAddonCompartmentEnter
+## AddonCompartmentFuncOnLeave: Deadeye_OnAddonCompartmentLeave
+
+Core.lua
+Media.lua
+Frames.lua
+Options\Widgets.lua
+Options\Slash.lua
+Options\Window.lua
+Modules\AutoShot.lua
+Modules\Range.lua
+Modules\Pet.lua
+Modules\Camera.lua

@@ -1,4 +1,4 @@
--- Runs the ForeverHunter tests on Lua 5.1, the Lua version WoW uses.
+-- Runs the Deadeye tests on Lua 5.1, the Lua version WoW uses.
 --   lua5.1 tests/run.lua          (from the project root)
 --   python tests/run_tests.py     (uses the Lua 5.1 bundled with the lupa package)
 local ROOT = ROOT or (arg and arg[0] and arg[0]:match("^(.*)[/\\]tests[/\\]run%.lua$")) or "."
@@ -7,7 +7,7 @@ local H = dofile(ROOT .. "/tests/harness.lua")
 local passed, failed = 0, 0
 
 -- Every file in the .toc must compile before anything else runs.
-for line in io.lines(ROOT .. "/ForeverHunter.toc") do
+for line in io.lines(ROOT .. "/Deadeye.toc") do
 	line = line:gsub("\r", "")
 	if line ~= "" and not line:find("^##") then
 		local path = ROOT .. "/" .. line:gsub("\\", "/")

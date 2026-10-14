@@ -1,4 +1,4 @@
--- The options window and the /fh <setting> <value> chat commands.
+-- The options window and the /deadeye <setting> <value> chat commands.
 local H, ROOT = ...
 
 local RANGED = 2
@@ -20,14 +20,14 @@ local function Open(W)
 	return W.ns.OptionsWindow
 end
 
-test("/fh opens and closes the window; Escape support and the AddOns page are set up", function()
+test("/deadeye opens and closes the window; Escape support and the AddOns page are set up", function()
 	local W, window = Setup()
 	H.True(W.registeredCategory ~= nil, "category under Options > AddOns")
-	H.Equal(W.registeredCategory.name, "ForeverHunter", "category name")
+	H.Equal(W.registeredCategory.name, "Deadeye", "category name")
 	Open(W)
 	H.True(window:IsOpen(), "open")
-	H.Equal(W.env.UISpecialFrames[1], "ForeverHunterOptionsFrame", "closes with Escape")
-	H.Equal(#window.sections, 12, "pages: 6 Auto Shot, 3 range, 2 pet, 1 camera")
+	H.Equal(W.env.UISpecialFrames[1], "DeadeyeOptionsFrame", "closes with Escape")
+	H.Equal(#window.sections, 13, "pages: 6 Auto Shot, 3 range, 3 pet, 1 camera")
 	H.True(window.navButtons[1].selected:IsShown(), "first page selected")
 	W.Slash("")
 	H.False(window:IsOpen(), "closed")
@@ -56,7 +56,7 @@ test("the live preview loops fake shots only while the window is open", function
 	W.Advance(2.5)
 	H.True(AS.state.fake, "still looping")
 	window.previewCheck:Click()
-	H.False(W.env.ForeverHunterDB.previewInOptions, "preview setting saved")
+	H.False(W.env.DeadeyeDB.previewInOptions, "preview setting saved")
 	H.False(AS.state.preview, "preview off")
 	H.False(bar:IsVisible(), "bar hidden without the preview")
 	window.previewCheck:Click()
@@ -135,7 +135,7 @@ test("dragging the bar updates the open position controls", function()
 	local x = window:GetControl("Position & Size", "X offset from center")
 	H.False(window.unlockCheck:GetChecked(), "footer shows the locked state")
 	window:GetControl("Position & Size", "Unlock frames to drag them").check:Click()
-	H.False(W.env.ForeverHunterDB.locked, "unlocked from the window")
+	H.False(W.env.DeadeyeDB.locked, "unlocked from the window")
 	W.dropPoint = { "CENTER", "CENTER", 120, 40 }
 	bar.scripts.OnDragStop(bar)
 	W.Advance(0.02)
@@ -198,17 +198,17 @@ test("prefixed chat settings reach the range and pet modules", function()
 	W.Slash("range fontsize 20")
 	H.Equal(Range.db.fontSize, 20, "range setting")
 	W.Slash("range off")
-	H.False(Range.db.enabled, "/fh range off")
+	H.False(Range.db.enabled, "/deadeye range off")
 	W.Slash("range on")
-	H.True(Range.db.enabled, "/fh range on")
+	H.True(Range.db.enabled, "/deadeye range on")
 	W.Slash("pet width 220")
 	H.Equal(Pet.db.width, 220, "pet setting")
 	W.Slash("pet bogus 1")
 	H.True(W.Printed("No pet setting called 'bogus'"), "unknown prefixed setting")
 	W.Slash("range")
-	H.True(W.Printed("Range indicator settings"), "/fh range lists its settings")
+	H.True(W.Printed("Range indicator settings"), "/deadeye range lists its settings")
 	W.Slash("settings pet")
-	H.True(W.Printed("Pet panel settings"), "/fh settings pet")
+	H.True(W.Printed("Pet panel settings"), "/deadeye settings pet")
 end)
 
 return tests

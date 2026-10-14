@@ -1,11 +1,11 @@
 name: Package and release
 
-# Pushing a tag such as v0.2.0-beta builds ForeverHunter-<tag>.zip with the
+# Pushing a tag such as v0.2.0-beta builds Deadeye-<tag>.zip with the
 # BigWigs packager and attaches it to a GitHub release. Tags containing
 # "alpha" or "beta" are marked as such.
 #
 # CurseForge uploads switch on once the repository has a CF_API_TOKEN secret
-# and ForeverHunter.toc has a "## X-Curse-Project-ID:" line (see README).
+# and Deadeye.toc has a "## X-Curse-Project-ID:" line (see README).
 on:
   push:
     tags:

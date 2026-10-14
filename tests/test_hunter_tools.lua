@@ -268,7 +268,7 @@ test("camera: max distance is only touched when you turn it on", function()
 	W.inCombat = false
 	W.Fire("PLAYER_REGEN_ENABLED")
 	H.Equal(W.cvars.cameraDistanceMaxZoomFactor, "1.9", "game default restored")
-	local saved = W.env.ForeverHunterDB
+	local saved = W.env.DeadeyeDB
 	saved.modules.Camera.enabled = true
 	local W2 = H.NewWorld({ savedVariables = saved })
 	H.LoadAddon(W2, ROOT)
@@ -318,14 +318,19 @@ end)
 ---------------------------------------------------------------------------
 -- Pet panel
 ---------------------------------------------------------------------------
-local function SummonPet(W, overrides)
-	W.pet = {
-		name = "Grrl", health = 800, healthMax = 1000, happiness = 3, damage = 125, loyaltyRate = 1,
+local function PetData(overrides)
+	local pet = {
+		name = "Grrl", level = 30, health = 800, healthMax = 1000, happiness = 3, damage = 125, loyaltyRate = 1,
 		loyalty = "Loyalty Level 3 (Faithful)", diet = { "Meat", "Fish" }, training = { 120, 85 },
 	}
 	for key, value in pairs(overrides or {}) do
-		W.pet[key] = value
+		pet[key] = value
 	end
+	return pet
+end
+
+local function SummonPet(W, overrides)
+	W.pet = PetData(overrides)
 	W.Fire("UNIT_PET", "player")
 end
 
@@ -376,8 +381,11 @@ test("pet: alerts when happiness drops, with sound and a pulse", function()
 	H.Equal(Pet.frame.icon.atlas, "UI-PetNeutral", "content icon")
 	W.Advance(0.5)
 	H.True(Pet.frame.alpha < 1, "panel pulses")
+	H.True(Pet.feedButton.alpha < 1, "and the feed button with it")
+	H.SameColor(Pet.feedButton.background.color, { 1, 0.82, 0 }, "the feed button lights up while the pet isn't happy")
 	W.Advance(6)
 	H.Equal(Pet.frame.alpha, 1, "pulse ends")
+	H.Equal(Pet.feedButton.alpha, 1, "pulse ends")
 	W.pet.happiness = 3
 	W.Fire("UNIT_HAPPINESS", "pet")
 	H.Equal(#W.sounds, 1, "no alert when it gets happier")
@@ -441,8 +449,191 @@ test("pet and range stay off for other classes", function()
 	local W, Range, Pet = Setup({ class = "MAGE" })
 	H.Equal(Range.frame, nil, "no range frame")
 	H.Equal(Pet.frame, nil, "no pet frame")
+	H.Equal(Pet.feedButton, nil, "no feed button")
 	W.Slash("pet width 200")
 	H.True(W.Printed("Pet panel only runs on hunters."), "explains")
+end)
+
+---------------------------------------------------------------------------
+-- Feed button
+---------------------------------------------------------------------------
+local JERKY, MUTTON, SHANK, QUAIL, RAPTOR, MACKEREL, BREAD = 117, 3770, 3771, 8952, 12210, 787, 4540
+
+-- Fills the bags with { bag, slot, itemID, count } entries, then fires the
+-- client's bag event.
+local function Bags(W, contents)
+	W.bags = { [0] = { size = 16 }, [1] = { size = 12 }, [2] = { size = 12 }, [3] = { size = 12 }, [4] = { size = 12 } }
+	for _, entry in ipairs(contents) do
+		W.bags[entry[1]][entry[2]] = { itemID = entry[3], count = entry[4] }
+	end
+	W.Fire("BAG_UPDATE_DELAYED")
+end
+
+local function FeedTooltip(W, Pet)
+	Pet.feedButton.scripts.OnEnter(Pet.feedButton)
+	return table.concat(W.env.GameTooltip.lines, " | ")
+end
+
+test("feed button: feeds food close to the pet's level, lowest level and smallest stack first", function()
+	local W, _, Pet = Setup()
+	SummonPet(W) -- level 30, eats meat and fish
+	Bags(W, {
+		{ 0, 1, JERKY, 20 }, -- 25 levels below the pet: little happiness
+		{ 0, 2, QUAIL, 10 }, -- above it: full happiness, but better food to keep
+		{ 1, 3, MUTTON, 5 }, -- close to its level
+		{ 2, 7, MUTTON, 3 }, -- the same, in a smaller stack
+		{ 0, 3, BREAD, 20 }, -- not in its diet
+	})
+	local button = Pet.feedButton
+	H.True(button:IsShown(), "shown next to a live pet")
+	H.Equal(button:GetAttribute("type"), "spell", "casts a spell")
+	H.Equal(button:GetAttribute("spell"), 6991, "Feed Pet")
+	H.Equal(button:GetAttribute("target-bag"), 2, "on the smaller mutton stack")
+	H.Equal(button:GetAttribute("target-slot"), 7, "on the smaller mutton stack")
+	H.Equal(button.icon.texture, 133974, "shows the food")
+	H.False(button.icon.desaturated, "in color")
+	H.Equal(button.count.text, "8", "mutton left in all your bags")
+	H.True(FeedTooltip(W, Pet):find("Feed Grrl | Mutton Chop (8 in your bags)", 1, true), "tooltip")
+
+	W.Click(button)
+	H.Equal(#W.casts, 1, "one cast per click")
+	H.Equal(W.casts[1], 6991, "Feed Pet")
+	H.Equal(W.used[1].bag, 2, "then the food")
+	H.Equal(W.used[1].slot, 7, "then the food")
+	W.cvars.ActionButtonUseKeyDown = "0"
+	W.Click(button)
+	H.Equal(#W.casts, 2, "one cast per click with 'cast on key down' off too")
+
+	Bags(W, { { 0, 1, JERKY, 20 }, { 0, 2, QUAIL, 10 } })
+	H.Equal(button:GetAttribute("target-slot"), 2, "quail once the mutton is gone, not the far lower jerky")
+	Bags(W, { { 0, 1, JERKY, 20 } })
+	H.True(FeedTooltip(W, Pet):find("Well below Grrl's level, so it gives less happiness.", 1, true), "warns about low food")
+	W.pet.level = 40
+	W.Fire("UNIT_LEVEL", "pet")
+	H.True(FeedTooltip(W, Pet):find("Probably too low level for Grrl to eat.", 1, true), "warns about food that's too low")
+	H.Equal(button:GetAttribute("target-slot"), 1, "still offered: the game has the last word")
+end)
+
+test("feed button: leaves food that makes you well fed, and food you skip, alone", function()
+	local W, _, Pet = Setup()
+	SummonPet(W)
+	-- Roast Raptor would win (the same level, a smaller stack) but it's buff food.
+	Bags(W, { { 0, 1, RAPTOR, 2 }, { 0, 2, SHANK, 10 }, { 0, 3, MACKEREL, 20 } })
+	local button = Pet.feedButton
+	H.Equal(button:GetAttribute("target-slot"), 2, "the wild hog shank, not the buff food")
+	H.True(FeedTooltip(W, Pet):find("Saved for you (well fed): Roast Raptor", 1, true), "the tooltip says why")
+
+	W.Click(button, "RightButton")
+	H.Equal(#W.casts, 0, "a right-click doesn't feed")
+	H.True(W.Printed("The feed button will leave Wild Hog Shank alone."), "says what it skips")
+	H.Equal(button:GetAttribute("target-slot"), 3, "the mackerel instead")
+	H.Equal(Pet.db.skipFoods[SHANK], "Wild Hog Shank", "remembered")
+	H.True(FeedTooltip(W, Pet):find("Skipped: Wild Hog Shank. /deadeye pet unskip uses them again.", 1, true), "tooltip lists it")
+
+	W.Slash("pet unskip")
+	H.True(W.Printed("The feed button can use Wild Hog Shank again."), "unskipped")
+	H.Equal(button:GetAttribute("target-slot"), 2, "back to the shank")
+end)
+
+test("feed button: with no food the pet eats, a click casts Feed Pet so you can pick", function()
+	local W, _, Pet = Setup()
+	SummonPet(W)
+	Bags(W, { { 0, 1, BREAD, 5 } })
+	local button = Pet.feedButton
+	H.True(button:IsShown(), "still shown")
+	H.Equal(button:GetAttribute("target-slot"), nil, "no food to use")
+	H.Equal(button.icon.texture, 132165, "Feed Pet's own icon")
+	H.True(button.icon.desaturated, "greyed out")
+	H.Equal(button.count.text, "", "no count")
+	local tooltip = FeedTooltip(W, Pet)
+	H.True(tooltip:find("No food in your bags that Grrl eats.", 1, true), "says so")
+	H.True(tooltip:find("Eats: Meat, Fish", 1, true), "and what it eats")
+	W.Click(button)
+	H.Equal(W.casts[1], 6991, "Feed Pet cast")
+	H.Equal(#W.used, 0, "no food picked for you")
+end)
+
+test("feed button: sits beside the panel, away from the middle, and hides with it", function()
+	local W, _, Pet = Setup()
+	SummonPet(W)
+	local button, panel = Pet.feedButton, Pet.frame
+	local function Gap()
+		local left, _, width = panel:GetRect()
+		local buttonLeft, _, buttonWidth = button:GetRect()
+		if buttonLeft < left then
+			return left - (buttonLeft + buttonWidth)
+		end
+		return buttonLeft - (left + width)
+	end
+	H.Equal(button.height, panel.height, "as tall as the panel")
+	H.True(select(1, button:GetRect()) < select(1, panel:GetRect()), "left of a panel left of center")
+	H.Equal(Gap(), 3, "a small gap")
+	W.Slash("pet x 300")
+	H.True(select(1, button:GetRect()) > select(1, panel:GetRect()), "right of a panel right of center")
+	H.Equal(Gap(), 3, "a small gap")
+	W.Slash("pet scale 1.5")
+	H.Equal(button.scale, 1.5, "scaled with the panel")
+	H.Equal(Gap(), 3, "a small gap")
+	W.Slash("move")
+	W.dropPoint = { "CENTER", "CENTER", -500, 0 }
+	panel.scripts.OnDragStop(panel)
+	H.True(select(1, button:GetRect()) < select(1, panel:GetRect()), "follows a dragged panel")
+	H.Equal(Gap(), 3, "a small gap")
+	W.Slash("move")
+
+	W.Slash("pet feedbutton off")
+	H.False(button:IsShown(), "turned off")
+	W.Slash("pet feedbutton on")
+	W.Slash("pet show attention")
+	H.False(button:IsShown(), "hidden with the panel while the pet is happy")
+	W.Slash("pet show always")
+	W.pet.dead = true
+	W.Fire("UNIT_HEALTH", "pet")
+	H.False(button:IsShown(), "hidden while the pet is dead")
+end)
+
+test("feed button: in combat only its looks change, the rest waits for the fight to end", function()
+	local W, _, Pet = Setup()
+	SummonPet(W)
+	Bags(W, { { 0, 1, MUTTON, 5 }, { 0, 2, QUAIL, 10 } })
+	local button = Pet.feedButton
+	W.inCombat = true
+	W.Fire("PLAYER_REGEN_DISABLED")
+	Bags(W, { { 0, 2, QUAIL, 10 } })
+	W.pet.happiness = 2
+	W.Fire("UNIT_HAPPINESS", "pet")
+	W.Slash("pet x 300")
+	W.Slash("pet feedbutton off")
+	W.Advance(1)
+	H.Equal(#W.blocked, 0, "nothing the game would block: " .. table.concat(W.blocked, ", "))
+	H.SameColor(button.background.color, { 1, 0.82, 0 }, "lights up as the pet gets hungry")
+	H.Equal(button:GetAttribute("target-slot"), 1, "keeps its food until the fight ends")
+	H.Equal(button.icon.texture, 133974, "and shows the food a click would use")
+	H.True(button:IsShown(), "and stays")
+	local _, _, _, x = Pet.frame:GetPoint(1)
+	H.Equal(x, 300, "the panel itself still moves in combat")
+	H.False(W.IsProtected(Pet.frame), "the panel never becomes protected")
+
+	W.inCombat = false
+	W.Fire("PLAYER_REGEN_ENABLED")
+	H.False(button:IsShown(), "turned off after the fight")
+	W.Slash("pet feedbutton on")
+	H.Equal(button:GetAttribute("target-slot"), 2, "bags looked at again after the fight")
+	H.True(select(1, button:GetRect()) > select(1, Pet.frame:GetRect()), "on the panel's new side")
+end)
+
+test("feed button: after a reload mid-fight it is made when the fight ends", function()
+	local W = H.NewWorld()
+	W.pet = PetData()
+	W.inCombat = true
+	H.LoadAddon(W, ROOT)
+	local Pet = W.ns.modules.Pet
+	H.Equal(Pet.feedButton, nil, "not made in combat")
+	H.True(Pet.frame:IsShown(), "the panel works meanwhile")
+	H.Equal(#W.blocked, 0, "nothing the game would block: " .. table.concat(W.blocked, ", "))
+	W.inCombat = false
+	W.Fire("PLAYER_REGEN_ENABLED")
+	H.True(Pet.feedButton ~= nil and Pet.feedButton:IsShown(), "made once the fight is over")
 end)
 
 return tests

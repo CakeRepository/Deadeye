@@ -164,7 +164,7 @@ local state = {
 	latency = 0,
 	nextLatencyCheck = 0,
 	cueFor = nil, -- cycle the stop-moving sound already played for
-	test = false, -- /fh test
+	test = false, -- /deadeye test
 	preview = false, -- the options window is open
 	fight = { shots = 0, delayed = 0, lost = 0 }, -- Auto Shot delays this fight
 	lastFight = nil,
@@ -295,7 +295,7 @@ end
 -- Bar
 ---------------------------------------------------------------------------
 function AutoShot:CreateBar()
-	local bar = CreateFrame("Frame", "ForeverHunterAutoShotBar", UIParent)
+	local bar = CreateFrame("Frame", "DeadeyeAutoShotBar", UIParent)
 	bar:SetFrameStrata("MEDIUM")
 	bar:SetScript("OnUpdate", function(frame)
 		local now = GetTime()
@@ -635,7 +635,7 @@ function AutoShot:SetTestMode(enabled)
 	EndSimulation()
 	self:Refresh()
 	if enabled then
-		ns.Print("Test mode on: a fake Auto Shot loops. Move during the green aim window to see it turn red. /fh test to stop.")
+		ns.Print("Test mode on: a fake Auto Shot loops. Move during the green aim window to see it turn red. /deadeye test to stop.")
 	else
 		ns.Print("Test mode off.")
 	end
@@ -687,7 +687,7 @@ function AutoShot:OnOptionChanged()
 	self:ApplyLayout()
 end
 
--- slash is the name used by /fh <name> <value> (see Options\Slash.lua).
+-- slash is the name used by /deadeye <name> <value> (see Options\Slash.lua).
 function AutoShot:GetOptionSections()
 	local function PlayChosenSound()
 		local sound = ns.Media.Sound(self.db.sound)
@@ -802,7 +802,7 @@ local function BarCommand(handler)
 	end
 end
 
--- Most bar settings are changed with /fh <setting> <value> (Options\Slash.lua);
+-- Most bar settings are changed with /deadeye <setting> <value> (Options\Slash.lua);
 -- these are the extra commands.
 function AutoShot:OnInitialize()
 	ns:RegisterCommand("test", "test", "Loop a fake Auto Shot to preview the bar.", BarCommand(function()

@@ -1,4 +1,4 @@
--- The options window (/fh). Each enabled module can add pages by returning
+-- The options window (/deadeye). Each enabled module can add pages by returning
 -- them from module:GetOptionSections():
 --   { name = "Bar",
 --     keys = { "texture", ... },   -- settings that "Reset page" restores
@@ -60,7 +60,7 @@ function Window:CollectSections()
 end
 
 function Window:Create()
-	local frame = CreateFrame("Frame", "ForeverHunterOptionsFrame", UIParent)
+	local frame = CreateFrame("Frame", "DeadeyeOptionsFrame", UIParent)
 	frame:SetSize(WIDTH, HEIGHT)
 	frame:SetPoint("CENTER")
 	frame:SetFrameStrata("HIGH")
@@ -133,7 +133,7 @@ function Window:Create()
 	if #self.sections == 0 then
 		local empty = content:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 		empty:SetPoint("TOPLEFT")
-		empty:SetText("Nothing to set up on this character: ForeverHunter's features are for hunters.")
+		empty:SetText("Nothing to set up on this character: Deadeye's features are for hunters.")
 		self.emptyText = empty
 	end
 end
@@ -375,17 +375,17 @@ function Window:RegisterSettingsCategory()
 	title:SetText(ns.title)
 	local text = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
 	text:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -10)
-	text:SetText("ForeverHunter's settings live in their own window with a live preview of the bar.")
+	text:SetText("Deadeye's settings live in their own window with a live preview of the bar.")
 	local button = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
 	button:SetSize(220, 26)
 	button:SetPoint("TOPLEFT", text, "BOTTOMLEFT", 0, -12)
-	button:SetText("Open ForeverHunter options")
+	button:SetText("Open Deadeye options")
 	button:SetScript("OnClick", function()
 		if SettingsPanel and SettingsPanel:IsShown() and not InCombatLockdown() then
 			HideUIPanel(SettingsPanel)
 		end
 		self:Open()
 	end)
-	self.category = Settings.RegisterCanvasLayoutCategory(panel, "ForeverHunter")
+	self.category = Settings.RegisterCanvasLayoutCategory(panel, "Deadeye")
 	Settings.RegisterAddOnCategory(self.category)
 end
