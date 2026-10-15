@@ -5,16 +5,14 @@ https://www.curseforge.com/wow/addons/deadeye-hunter-auto-shot-timer-range-feed-
 (visible once a moderator approves the first file). The text below is what was entered, kept here
 so the page can be edited later.
 
-**Name:** Deadeye - Hunter Auto Shot Timer, Range & Feed Pet (Forever)
+**Name:** Deadeye - Hunter Auto Shot, Range, Ammo & Feed Pet (Forever)
 
 CurseForge search matches words in project titles, so the title carries the words players search
-for: hunter, auto shot, timer, range, feed pet, forever.
+for: hunter, auto shot, range, ammo, feed pet, forever. The page address (slug) still has the
+first title's words, which keeps old links working.
 
 **Summary:**
 Auto Shot bar, range strip, ammo counter with automatic restocking, aspect reminder, pet panel with a feed button, and a Tranq Shot callout for WoW: Forever hunters.
-
-The title could also carry "Ammo", which hunters search for, e.g.
-"Deadeye - Hunter Auto Shot, Range, Ammo & Feed Pet (Forever)".
 
 **Screenshots** (Media tab), in `docs/screenshots/`, with captions:
 1. `1-auto-shot-bar.png`: The Auto Shot bar with the range strip and the Hunter's Mark reminder
