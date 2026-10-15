@@ -72,6 +72,21 @@ local ADDON_GLOBALS = {
 }
 -- Optional globals that are simply absent unless another addon provides them.
 local OPTIONAL_GLOBALS = { LibStub = true }
+H.addonGlobals, H.optionalGlobals = ADDON_GLOBALS, OPTIONAL_GLOBALS
+
+-- Mocks for newer features live in tests/mocks/<name>.lua. Each returns
+-- function(W, env, M) that adds to a new world (M: check, NewFrame, isNumber,
+-- isSecret, options, H). They wrap the functions defined here for the cases
+-- they handle and pass every other call on to the function they wrapped.
+local MOCK_FILES = { "ammo", "aspect", "clipping", "tranq" }
+local HERE = debug.getinfo(1, "S").source:match("^@(.*)[/\]harness%.lua$") or "tests"
+local mockChunks = {}
+local function MockFile(name)
+	if not mockChunks[name] then
+		mockChunks[name] = assert(loadfile(HERE .. "/mocks/" .. name .. ".lua"))()
+	end
+	return mockChunks[name]
+end
 
 local function check(condition, message)
 	if not condition then
@@ -253,7 +268,7 @@ function Texture:SetColorTexture(r, g, b, a)
 end
 
 function Texture:SetTexture(asset)
-	check(asset == nil or type(asset) == "string" or isNumber(asset), "SetTexture: path or file id expected")
+	check(asset == nil or type(asset) == "string" or isNumber(asset) or isSecret(asset), "SetTexture: path or file id expected")
 	self.texture = asset
 end
 
@@ -283,9 +298,10 @@ end
 local FontString = setmetatable({}, { __index = Region })
 FontString.__index = FontString
 
+-- Text widgets show secret values as they are (addon code can't read them back).
 function FontString:SetText(text)
-	check(text == nil or type(text) == "string" or isNumber(text), "SetText: string expected")
-	self.text = text and tostring(text) or ""
+	check(text == nil or type(text) == "string" or isNumber(text) or isSecret(text), "SetText: string expected")
+	self.text = isSecret(text) and text or (text and tostring(text) or "")
 end
 
 function FontString:SetFormattedText(fmt, ...)
@@ -621,6 +637,11 @@ function Button:IsEnabled()
 	return self.enabled ~= false
 end
 
+-- Lets a disabled button still show its tooltip.
+function Button:SetMotionScriptsWhileDisabled(enabled)
+	self.motionScriptsWhileDisabled = enabled
+end
+
 function Button:Click(mouseButton)
 	if self:IsEnabled() and self.scripts.OnClick then
 		self.scripts.OnClick(self, mouseButton or "LeftButton", false)
@@ -848,7 +869,10 @@ function H.NewWorld(options)
 		moving = false,
 		falling = false,
 		inRange = nil, -- Auto Shot range to the target: true, false or nil (no valid target)
-		meleeInRange = nil, -- the same for melee abilities
+		meleeInRange = nil, -- the same for melee abilities (Raptor Strike)
+		autoAttackInRange = nil, -- Auto Attack's range check (nil: it doesn't answer)
+		swingMeleeInRange = nil, -- C_SwingTimer's melee range check (nil: broken, as on the tested betas)
+		cameraZoomOuts = {}, -- CameraZoomOut calls
 		close = nil, -- CheckInteractDistance result (about 10 yards)
 		hasTarget = false,
 		targetDead = false,
@@ -1014,13 +1038,14 @@ function H.NewWorld(options)
 			W.timers[#W.timers + 1] = { at = W.now + delay, callback = callback }
 		end,
 	}
-	local SPELL_NAMES = {
+	-- Spell names and icons by ID; mock files add their own spells.
+	W.spellNames = {
 		[75] = "Auto Shot", [2973] = "Raptor Strike", [2974] = "Wing Clip", [1495] = "Mongoose Bite",
-		[1130] = "Hunter's Mark", [14325] = "Hunter's Mark", [3044] = "Arcane Shot",
+		[1130] = "Hunter's Mark", [14325] = "Hunter's Mark", [3044] = "Arcane Shot", [6603] = "Auto Attack",
 		[6991] = "Feed Pet", [19705] = "Well Fed",
 	}
-	local SPELL_TEXTURES = { [75] = 132222, [6991] = 132165 }
-	local MELEE = { ["Raptor Strike"] = true, ["Wing Clip"] = true, ["Mongoose Bite"] = true }
+	W.spellTextures = { [75] = 132222, [6991] = 132165 }
+	local MELEE = { ["Raptor Strike"] = true, ["Wing Clip"] = true, ["Mongoose Bite"] = true, ["Auto Attack"] = true }
 	env.C_Spell = {
 		IsSpellInRange = function(spell, unit)
 			local plate = W.Plate(unit)
@@ -1037,15 +1062,17 @@ function H.NewWorld(options)
 			check(MELEE[spell], "IsSpellInRange: unexpected spell " .. tostring(spell))
 			if spell == "Raptor Strike" then
 				return W.meleeInRange
+			elseif spell == "Auto Attack" then
+				return W.autoAttackInRange
 			end
 			return nil -- not learned yet
 		end,
 		GetSpellTexture = function(spell)
-			check(SPELL_TEXTURES[spell], "GetSpellTexture: unexpected spell " .. tostring(spell))
-			return SPELL_TEXTURES[spell], SPELL_TEXTURES[spell]
+			check(W.spellTextures[spell], "GetSpellTexture: unexpected spell " .. tostring(spell))
+			return W.spellTextures[spell], W.spellTextures[spell]
 		end,
 		GetSpellName = function(spell)
-			return SPELL_NAMES[spell]
+			return W.spellNames[spell]
 		end,
 	}
 	-- nameplateN is the Nth entry of W.plates.
@@ -1229,12 +1256,32 @@ function H.NewWorld(options)
 			return false
 		end,
 	}
+	-- The pet bar: W.petActions[slot] = { name =, autoCastEnabled = }; W.instanceType
+	-- is "none" outside dungeons and raids ("party", "raid" inside).
+	W.petActions, W.instanceType = {}, "none"
+	env.GetPetActionInfo = function(slot)
+		check(isNumber(slot), "GetPetActionInfo: slot expected")
+		local action = W.pet and W.petActions[slot]
+		if action then
+			return action.name, 136224, false, false, true, action.autoCastEnabled == true, action.spellID
+		end
+	end
+	env.IsInInstance = function()
+		return W.instanceType ~= "none", W.instanceType
+	end
 	env.C_SwingTimer = {
 		IsTargetWithinSwingRange = function(swingType)
-			check(swingType == 2, "IsTargetWithinSwingRange: unexpected swing type")
+			check(swingType == 0 or swingType == 2, "IsTargetWithinSwingRange: unexpected swing type")
+			if swingType == 0 then
+				return W.swingMeleeInRange
+			end
 			return nil -- broken on the beta builds that were tested
 		end,
 	}
+	env.CameraZoomOut = function(yards)
+		check(isNumber(yards), "CameraZoomOut: distance expected")
+		W.cameraZoomOuts[#W.cameraZoomOuts + 1] = { yards = yards, inCombat = W.inCombat, factor = W.cvars.cameraDistanceMaxZoomFactor }
+	end
 	env.C_AddOns = {
 		GetAddOnMetadata = function(addon, field)
 			if addon == "Deadeye" and field == "Version" then
@@ -1306,6 +1353,10 @@ function H.NewWorld(options)
 	}
 	if options.savedVariables then
 		env.DeadeyeDB = options.savedVariables
+	end
+	local M = { check = check, NewFrame = NewFrame, isNumber = isNumber, isSecret = isSecret, options = options, H = H }
+	for _, name in ipairs(MOCK_FILES) do
+		MockFile(name)(W, env, M)
 	end
 	for name in pairs(options.missingGlobals or {}) do
 		env[name] = nil

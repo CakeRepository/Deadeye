@@ -4,7 +4,9 @@
 -- C_Spell.IsSpellInRange with Auto Shot and a melee ability stays readable in
 -- combat. Out of combat, CheckInteractDistance also tells the dead zone (about
 -- 10 yards) from too far. In combat Blizzard restricts that call on enemies, so
--- the text then just says you have no shot.
+-- the text then just says you have no shot. Without a melee check that works
+-- (low level hunters only have Raptor Strike, whose check can't be trusted),
+-- melee range and the dead zone read as one band: too close.
 local _, ns = ...
 local L = ns.L
 
@@ -25,6 +27,7 @@ local Range = ns:NewModule("Range", {
 		melee = L["Melee"],
 		ranged = L["Ranged"],
 		deadZone = L["Dead zone"],
+		close = L["Too close"],
 		noShot = L["No shot"],
 		tooFar = L["Out of range"],
 		facing = L["Face your target"],
@@ -35,6 +38,7 @@ local Range = ns:NewModule("Range", {
 		melee = { 1, 0.82, 0 },
 		ranged = { 0.35, 0.9, 0.35 },
 		deadZone = { 1, 0.3, 0.3 },
+		close = { 1, 0.4, 0.25 },
 		noShot = { 1, 0.5, 0.15 },
 		tooFar = { 0.65, 0.65, 0.65 },
 		facing = { 1, 0.3, 0.3 },
@@ -49,10 +53,13 @@ local AUTO_SHOT_SPELL_ID = 75
 local HUNTERS_MARK_SPELL_ID = 1130 -- checked by name, so any rank counts
 local MARK_SECONDS = 120 -- how long a mark lasts
 local AUTO_SHOT_YARDS = 35 -- Auto Shot's longest reach without talents
--- Wing Clip, Mongoose Bite, Raptor Strike. Checked by name, so any rank you know counts.
--- Raptor Strike goes last: it waits for your next swing, and its range check
--- has been seen to call far-away targets in range.
-local MELEE_SPELL_IDS = { 2974, 1495, 2973 }
+-- Wing Clip, Mongoose Bite, Auto Attack, Raptor Strike. Checked by name, so any
+-- rank you know counts. Raptor Strike goes last: it waits for your next swing,
+-- and its range check has been seen to call far-away targets in range.
+local MELEE_SPELL_IDS = { 2974, 1495, 6603, 2973 }
+local MELEE_SWING = Enum and Enum.PlayerSwingType and Enum.PlayerSwingType.MainHand or 0
+local RANGED_SWING = Enum and Enum.PlayerSwingType and Enum.PlayerSwingType.Ranged or 2
+local MELEE_SWING_SECONDS = 4 -- a melee swing this recent means you're still in melee range
 local CLOSE_DISTANCE_INDEX = 3 -- CheckInteractDistance: duel range, about 10 yards
 local POLL_SECONDS = 0.1
 local SAMPLE_STATUS = "ranged" -- shown while previewing or moving the frame
@@ -102,8 +109,18 @@ end
 -- one Auto Shot can reach (its minimum range is past melee range), or one past
 -- duel range. They are ignored from then on.
 local unreliable = {}
+local lastMeleeSwing -- when your last melee swing at this target landed
 
-local function MeleeInRange(ranged, close)
+-- true or false, or nil when nothing can tell.
+local function MeleeInRange(ranged, close, now)
+	-- The game's own melee range check, where it works (it answered nothing on
+	-- the beta builds that were tested).
+	if C_SwingTimer and C_SwingTimer.IsTargetWithinSwingRange then
+		local inRange = ns.Readable(C_SwingTimer.IsTargetWithinSwingRange(MELEE_SWING))
+		if inRange ~= nil then
+			return inRange
+		end
+	end
 	for _, spellID in ipairs(MELEE_SPELL_IDS) do
 		local name = not unreliable[spellID] and C_Spell.GetSpellName(spellID)
 		if name then
@@ -116,13 +133,19 @@ local function MeleeInRange(ranged, close)
 			end
 		end
 	end
+	-- Melee swings only land in melee range.
+	if lastMeleeSwing and now - lastMeleeSwing <= MELEE_SWING_SECONDS then
+		return true
+	end
 end
 
--- "melee", "ranged", "deadZone", "tooFar", "noShot", or nil without an attackable target.
+-- "melee", "ranged", "deadZone", "close" (melee or dead zone), "tooFar",
+-- "noShot", or nil without an attackable target.
 function Range:Evaluate()
+	local now = GetTime()
 	local ranged = ns.Readable(C_Spell.IsSpellInRange(AUTO_SHOT_SPELL_ID, "target"))
 	local close = Close()
-	local melee = MeleeInRange(ranged, close)
+	local melee = MeleeInRange(ranged, close, now)
 	if ranged == nil and melee == nil then
 		return nil
 	end
@@ -133,14 +156,19 @@ function Range:Evaluate()
 	if melee then
 		return "melee"
 	end
+	-- Too close to shoot: the dead zone only if a melee check says you're past melee range.
 	if close == true then
-		return "deadZone"
+		return melee == false and "deadZone" or "close"
 	elseif close == false then
 		return "tooFar"
 	end
 	-- In combat: a recent "too close" / "out of range" from Auto Shot settles it.
 	local autoShot = ns.modules.AutoShot
-	return autoShot.enabled and autoShot:GetRangeHint(GetTime()) or "noShot"
+	local hint = autoShot.enabled and autoShot:GetRangeHint(now) or nil
+	if hint == "deadZone" and melee == nil then
+		return "close"
+	end
+	return hint or "noShot"
 end
 
 function Range:Wanted(status)
@@ -159,6 +187,12 @@ end
 local function AttackProblem()
 	local autoShot = ns.modules.AutoShot
 	return autoShot.enabled and autoShot:GetProblem(GetTime()) or nil
+end
+
+-- "aspect" in combat while your aspect needs changing (see Modules\Aspect.lua).
+local function AspectWarning()
+	local aspect = ns.modules.Aspect
+	return aspect and aspect.enabled and aspect:Warning() or nil
 end
 
 ---------------------------------------------------------------------------
@@ -354,23 +388,31 @@ function Range:Update()
 	end
 	self.status = status
 	-- Warnings take the text; the strip keeps showing the range band.
-	local key = status and (AttackProblem() or (hasTarget and self:MarkReminder(now))) or status
+	local key = status and (AttackProblem() or AspectWarning() or (hasTarget and self:MarkReminder(now))) or status
 	local visible = key and (sample or key ~= status or self:Wanted(status))
 	if visible then
-		local color = db.colors[key]
-		frame.text:SetText(db.labels[key])
+		local text, color
+		if key == "aspect" then
+			text, color = ns.modules.Aspect:WarningText()
+		else
+			text, color = db.labels[key], db.colors[key]
+		end
+		frame.text:SetText(text)
 		frame.text:SetTextColor(color[1], color[2], color[3])
 		frame.text:Show()
 	else
 		frame.text:Hide()
 	end
 	frame.strip:SetShown(visible and db.style == "strip")
-	-- Light the band you are in; "no shot" could be either band next to Auto Shot range.
+	-- Light the band you are in. "No shot" could be either band next to Auto Shot
+	-- range, "too close" either band below it.
 	for _, band in ipairs(BANDS) do
 		local alpha = DIM
 		if band == status then
 			alpha = LIT
 		elseif status == "noShot" and (band == "deadZone" or band == "tooFar") then
+			alpha = UNSURE
+		elseif status == "close" and (band == "melee" or band == "deadZone") then
 			alpha = UNSURE
 		end
 		frame.segments[band]:SetAlpha(alpha)
@@ -516,6 +558,7 @@ function Range:GetOptionSections()
 				{ type = "color", label = L["Melee range"], key = "colors.melee", slash = "meleecolor" },
 				{ type = "color", label = L["Auto Shot range"], key = "colors.ranged", slash = "rangedcolor" },
 				{ type = "color", label = L["Dead zone"], key = "colors.deadZone", slash = "deadzonecolor" },
+				{ type = "color", label = L["Too close (melee or dead zone)"], key = "colors.close", slash = "closecolor" },
 				{ type = "color", label = L["No shot (in combat)"], key = "colors.noShot", slash = "noshotcolor" },
 				{ type = "color", label = L["Too far"], key = "colors.tooFar", slash = "toofarcolor" },
 				{ type = "color", label = L["Not facing the target"], key = "colors.facing", slash = "facingcolor" },
@@ -530,6 +573,7 @@ function Range:GetOptionSections()
 				{ type = "input", label = L["Melee range"], key = "labels.melee", slash = "meleetext" },
 				{ type = "input", label = L["Auto Shot range"], key = "labels.ranged", slash = "rangedtext" },
 				{ type = "input", label = L["Dead zone"], key = "labels.deadZone", slash = "deadzonetext" },
+				{ type = "input", label = L["Too close (melee or dead zone)"], key = "labels.close", slash = "closetext" },
 				{ type = "input", label = L["No shot (in combat)"], key = "labels.noShot", slash = "noshottext" },
 				{ type = "input", label = L["Too far"], key = "labels.tooFar", slash = "toofartext" },
 				{ type = "input", label = L["Not facing the target"], key = "labels.facing", slash = "facingtext" },
@@ -564,6 +608,7 @@ function Range:OnEnable()
 		events:RegisterEvent(event)
 	end
 	events:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
+	pcall(events.RegisterEvent, events, "PLAYER_SWING") -- Forever's own swing event
 	self.events = events
 	self:ApplyLayout()
 end
@@ -571,7 +616,16 @@ end
 function Range:PLAYER_TARGET_CHANGED()
 	-- A new target: nothing known about it yet. Your mark itself stays where it was.
 	mark.onTarget, mark.targetIDs, mark.baseline = nil, nil, nil
+	lastMeleeSwing = nil
 	self:Refresh()
+end
+
+-- A melee swing (main or off hand) at your target proves you're in melee range.
+function Range:PLAYER_SWING(_, swingType)
+	swingType = ns.Readable(swingType)
+	if swingType ~= nil and swingType ~= RANGED_SWING then
+		lastMeleeSwing = GetTime()
+	end
 end
 
 -- Your own casts stay readable in combat. A new mark replaces the old one

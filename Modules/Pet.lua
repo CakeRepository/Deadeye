@@ -1,7 +1,11 @@
 -- Your pet at a glance: happiness (and the damage bonus or penalty that comes
 -- with it), loyalty, health and diet, with alerts when it needs feeding or is
 -- missing at the start of a fight, and a button that feeds it. Hover the panel
--- for the details.
+-- for the details. Vendors that sell food your pet eats restock it through the
+-- button below the vendor window (Modules\Ammo.lua), and leaving town without
+-- any gets a warning. In dungeons and raids it reminds you to turn off Growl's
+-- autocast (your pet would pull enemies off the tank), and to turn it back on
+-- once you're out.
 --
 -- Pet health is a secret value for addons, so it is only ever handed to the
 -- status bar, never read. Happiness, loyalty and diet come from C_PetInfo,
@@ -27,6 +31,9 @@ local Pet = ns:NewModule("Pet", {
 	feedAlert = true,
 	feedButton = true,
 	skipFoods = {}, -- [itemID] = name: food the feed button leaves alone (right-click on it)
+	buyFood = true, -- vendors: buy food your pet eats, close to its level
+	growlReminder = true, -- Growl's autocast: off in dungeons and raids, on outside
+	foodStacks = 1, -- stacks of that food to carry
 	missingAlert = true,
 	alertSound = "PING",
 	font = "Default",
@@ -54,6 +61,10 @@ local WELL_FED_SPELL_ID = 19705 -- the "Well Fed" buff, for its name in the game
 local BAGS = { 0, 1, 2, 3, 4 } -- backpack and the four bag slots
 local FOOD_LEVEL_STEP = 10 -- see FoodTier
 local FEED_BUTTON_GAP = 3
+local LEAVING_QUIET_SECONDS = 300 -- one leaving-town warning per this long
+local GROWL_SPELL_ID = 2649 -- rank 1; found by name on the pet bar, so any rank counts
+local PET_ACTION_SLOTS = 10
+local GROUP_INSTANCES = { party = true, raid = true }
 local SAMPLE = { kind = "alive", name = L["Your pet"], happiness = HAPPY, damage = 125, loyaltyRate = 1, loyalty = L["Loyalty Level 6 (Best Friend)"] }
 
 local SHOW_CHOICES = {
@@ -166,6 +177,99 @@ local function FindFood(skipped)
 		best.total = totals[best.itemID]
 	end
 	return best, spared
+end
+
+-- Food your pet eats that you carry, counting only food at least this good
+-- (see FoodTier) and leaving out food the feed button leaves alone.
+function Pet:FoodCarried(minTier)
+	local petLevel = ns.Readable(UnitLevel("pet"))
+	local total, spare = 0, {}
+	for _, bag in ipairs(BAGS) do
+		for slot = 1, ns.Readable(C_Container.GetContainerNumSlots(bag), 0) do
+			local info = C_Container.GetContainerItemInfo(bag, slot)
+			local itemID = info and ns.Readable(info.itemID)
+			if itemID and ns.Readable(C_PetInfo.CanPetEatItem(itemID)) then
+				if spare[itemID] == nil then
+					local _, _, _, level = C_Item.GetItemInfo(itemID)
+					spare[itemID] = self.db.skipFoods[itemID] ~= nil or GivesBuff(itemID)
+						or FoodTier(ns.Readable(level), petLevel) < minTier
+				end
+				if not spare[itemID] then
+					total = total + ns.Readable(info.stackCount, 1)
+				end
+			end
+		end
+	end
+	return total
+end
+
+-- The food on sale at the open vendor that your pet would get the most
+-- happiness from, cheapest of those, or nil. Food you skipped or that makes you
+-- well fed is left alone, like the feed button does.
+function Pet:FoodOffer()
+	if not (self.db.buyFood and UnitExists("pet")) or ns.Readable(UnitIsDead("pet")) then
+		return nil
+	end
+	local petLevel = ns.Readable(UnitLevel("pet"))
+	local best
+	for index = 1, ns.Readable(GetMerchantNumItems(), 0) do
+		local itemID = ns.Readable(GetMerchantItemID(index))
+		if itemID and not self.db.skipFoods[itemID] and ns.Readable(C_PetInfo.CanPetEatItem(itemID)) then
+			local info = C_MerchantFrame.GetItemInfo(index)
+			if info and info.isPurchasable and not info.hasExtendedCost and (info.price or 0) > 0
+				and info.numAvailable ~= 0 and not GivesBuff(itemID) then
+				local offer = ns.VendorOffer(index, info, itemID)
+				offer.tier = FoodTier(offer.level, petLevel)
+				offer.unitPrice = offer.price / offer.batch
+				if offer.tier > 0 and (not best or offer.tier > best.tier
+					or (offer.tier == best.tier and offer.unitPrice < best.unitPrice)) then
+					best = offer
+				end
+			end
+		end
+	end
+	return best
+end
+
+-- Whether your pet's Growl casts itself: true or false, or nil without Growl
+-- on the pet bar (or when the game won't say).
+local function GrowlAutocast()
+	local growl = ns.Readable(C_Spell.GetSpellName(GROWL_SPELL_ID))
+	if not growl then
+		return nil
+	end
+	for slot = 1, PET_ACTION_SLOTS do
+		local name, _, isToken, _, _, autoCastEnabled = GetPetActionInfo(slot)
+		if not ns.Readable(isToken) and ns.Readable(name) == growl then
+			return ns.Readable(autoCastEnabled) and true or false
+		end
+	end
+end
+
+-- Growl taunts by itself. That keeps enemies on your pet while you solo, but
+-- in a dungeon or raid it pulls them off the tank. Says so once as you go in
+-- with it on, and once as you come out with it off.
+function Pet:CheckGrowl()
+	if not (self.db.enabled and self.db.growlReminder and UnitExists("pet")) or InCombatLockdown() then
+		return
+	end
+	local autocast = GrowlAutocast()
+	if autocast == nil then
+		return
+	end
+	local _, instanceType = IsInInstance()
+	if GROUP_INSTANCES[ns.Readable(instanceType)] then
+		self.inGroupContent = true
+		if autocast and not self.growlWarned then
+			self.growlWarned = true
+			self:Alert(L["Growl is on. In here it pulls enemies off your tank: right-click Growl on your pet bar to turn it off."])
+		end
+	elseif self.inGroupContent then
+		self.inGroupContent, self.growlWarned = false, false
+		if not autocast then
+			self:Alert(L["Back out in the world: right-click Growl on your pet bar to turn it back on."])
+		end
+	end
 end
 
 -- What the panel should show, or nil when there is nothing to show (no pet yet).
@@ -534,6 +638,10 @@ end
 
 function Pet:OnOptionChanged()
 	self:ApplyLayout()
+	local ammo = ns.modules.Ammo
+	if ammo and ammo.enabled then
+		ammo:UpdateVendorButton() -- the pet food it buys may have changed
+	end
 end
 
 -- The panel was dragged: the feed button follows (after the fight, if in one).
@@ -576,21 +684,24 @@ function Pet:GetOptionSections()
 		},
 		{
 			name = L["Pet: feeding"],
-			keys = { "feedButton", "feedAlert", "skipFoods" },
+			keys = { "feedButton", "feedAlert", "skipFoods", "buyFood", "foodStacks" },
 			controls = {
 				{ type = "toggle", label = L["Feed button next to the panel"], key = "feedButton", slash = "feedbutton" },
 				{ type = "toggle", label = L["Tell me when my pet needs feeding"], key = "feedAlert", slash = "feedalert" },
 				{ type = "button", label = L["Use skipped food again"], slash = "unskip", func = function()
 					self:UnskipFoods()
 				end },
+				{ type = "toggle", label = L["Buy food for my pet at vendors"], key = "buyFood", slash = "buyfood" },
+				{ type = "range", label = L["Stacks of pet food to carry"], key = "foodStacks", min = 1, max = 5, step = 1, slash = "foodstacks" },
 				{ type = "note", height = 120, text = L["Click the button to feed your pet the food it shows. It picks food close to your pet's level, lowest level first so your better food lasts, and leaves food that makes you well fed alone. Right-click it to skip a food. With no food shown, a click casts Feed Pet so you can pick one in your bags.\n\nThe button can't change during a fight. It catches up when the fight ends."] },
 			},
 		},
 		{
 			name = L["Pet: alerts & text"],
-			keys = { "missingAlert", "alertSound", "font", "fontSize", "fontOutline" },
+			keys = { "missingAlert", "growlReminder", "alertSound", "font", "fontSize", "fontOutline" },
 			controls = {
 				{ type = "toggle", label = L["Warn me in combat without my pet"], key = "missingAlert", slash = "missingalert" },
+				{ type = "toggle", label = L["Growl reminders for dungeons and raids"], key = "growlReminder", slash = "growl" },
 				{ type = "select", label = L["Alert sound"], key = "alertSound", values = ns.Media.Sounds(), slash = "sound" },
 				{ type = "button", label = L["Play the sound"], slash = "playsound", func = function()
 					local sound = ns.Media.Sound(self.db.alertSound)
@@ -623,7 +734,8 @@ function Pet:OnEnable()
 	self:BuildFrame()
 	self:BuildFeedButton()
 	local events = ns.CreateEventFrame(self)
-	for _, event in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "PET_UI_UPDATE", "BAG_UPDATE_DELAYED" }) do
+	for _, event in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "PET_UI_UPDATE",
+		"BAG_UPDATE_DELAYED", "PLAYER_UPDATE_RESTING", "PET_BAR_UPDATE" }) do
 		events:RegisterEvent(event)
 	end
 	events:RegisterUnitEvent("UNIT_PET", "player")
@@ -656,6 +768,12 @@ end
 function Pet:UNIT_PET()
 	lastHappiness = ns.Readable((C_PetInfo.GetPetHappiness()))
 	self:ScanFood() -- a different pet may eat different food
+	self:CheckGrowl()
+end
+
+-- The pet bar changed: a pet came out, or an autocast was switched.
+function Pet:PET_BAR_UPDATE()
+	self:CheckGrowl()
 end
 
 function Pet:PLAYER_REGEN_DISABLED()
@@ -674,6 +792,22 @@ end
 function Pet:PLAYER_REGEN_ENABLED()
 	self:BuildFeedButton()
 	self:ScanFood()
+	self:CheckGrowl()
+end
+
+-- Leaving an inn or a city without food your pet eats: a last chance to buy some.
+function Pet:PLAYER_UPDATE_RESTING()
+	if IsResting() or not (self.db.enabled and self.db.feedAlert and UnitExists("pet")) then
+		return
+	end
+	local now = GetTime()
+	if self.leftTownAt and now - self.leftTownAt < LEAVING_QUIET_SECONDS then
+		return
+	end
+	if self:FoodCarried(1) == 0 then
+		self.leftTownAt = now
+		self:Alert(L["You're heading out with no food %s eats."]:format(PetName()))
+	end
 end
 
 Pet.PLAYER_ENTERING_WORLD = Pet.UNIT_PET

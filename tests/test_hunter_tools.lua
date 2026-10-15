@@ -56,7 +56,7 @@ test("range: a melee ability whose check calls every target in range doesn't mak
 	H.Equal(Range.frame.segments.melee.alpha < 0.5, true, "melee band dim")
 	W.inRange, W.close = false, true
 	W.Advance(0.12)
-	H.Equal(RangeText(Range), "Dead zone", "the broken check is ignored from then on")
+	H.Equal(RangeText(Range), "Too close", "the broken check is ignored from then on, so up close it can't tell melee from the dead zone")
 	W.close = false
 	W.Advance(0.12)
 	H.Equal(RangeText(Range), "Out of range", "too far")
@@ -65,6 +65,75 @@ test("range: a melee ability whose check calls every target in range doesn't mak
 	local W2, Range2 = Setup()
 	Target(W2, false, true, false)
 	H.Equal(RangeText(Range2), "Out of range", "past duel range")
+end)
+
+test("range: up close without a melee check that works it says too close, not dead zone", function()
+	-- Seen in game: at level 10, standing in melee range read as "Dead zone".
+	local W, Range = Setup()
+	local segments = Range.frame.segments
+	Target(W, false, nil, true)
+	H.Equal(RangeText(Range), "Too close", "melee range or the dead zone")
+	H.SameColor(Range.frame.text.textColor, Range.db.colors.close, "its own color")
+	H.True(segments.melee.alpha > 0.5 and segments.deadZone.alpha > 0.5, "both near bands half lit")
+	H.True(segments.melee.alpha < 1 and segments.deadZone.alpha < 1, "neither fully lit")
+	W.Slash("range closetext Back up")
+	W.Advance(0.12)
+	H.Equal(RangeText(Range), "Back up", "its wording can be changed")
+end)
+
+test("range: Auto Attack's range check tells melee from the dead zone", function()
+	local W, Range = Setup()
+	Target(W, false, nil, true)
+	W.autoAttackInRange = true
+	W.Advance(0.12)
+	H.Equal(RangeText(Range), "Melee", "Auto Attack reaches it")
+	W.autoAttackInRange = false
+	W.Advance(0.12)
+	H.Equal(RangeText(Range), "Dead zone", "too close to shoot, too far to hit")
+	-- It's checked before Raptor Strike, so a broken Raptor Strike doesn't matter.
+	W.meleeInRange = true
+	W.Advance(0.12)
+	H.Equal(RangeText(Range), "Dead zone", "Auto Attack's answer counts")
+end)
+
+test("range: the game's own melee range check wins when it answers", function()
+	local W, Range = Setup()
+	Target(W, false, false, true)
+	W.swingMeleeInRange = true
+	W.Advance(0.12)
+	H.Equal(RangeText(Range), "Melee", "the swing timer says melee range")
+	W.swingMeleeInRange = false
+	W.meleeInRange = true
+	W.Advance(0.12)
+	H.Equal(RangeText(Range), "Dead zone", "and says when it isn't")
+end)
+
+test("range: your melee swings prove melee range in combat", function()
+	local W, Range = Setup()
+	W.Slash("range markalert off")
+	W.inCombat = true
+	W.Fire("PLAYER_REGEN_DISABLED")
+	Target(W, false, nil)
+	W.Fire("UI_ERROR_MESSAGE", 4, "Target too close")
+	W.Advance(0.12)
+	H.Equal(RangeText(Range), "Too close", "Auto Shot says too close, nothing says which band")
+	W.Fire("PLAYER_SWING", 2.6, 0)
+	W.Advance(0.12)
+	H.Equal(RangeText(Range), "Melee", "a main-hand swing landed")
+	W.Advance(4.2)
+	H.True(RangeText(Range) ~= "Melee", "old swings wear off")
+	W.Fire("PLAYER_SWING", 2.0, 2)
+	W.Advance(0.12)
+	H.True(RangeText(Range) ~= "Melee", "an Auto Shot isn't a melee swing")
+	W.Fire("PLAYER_SWING", H.Secret(2.6), H.Secret(0))
+	W.Advance(0.12)
+	H.True(RangeText(Range) ~= "Melee", "a secret swing type isn't read")
+	W.Fire("PLAYER_SWING", 2.6, 1)
+	W.Advance(0.12)
+	H.Equal(RangeText(Range), "Melee", "an off-hand swing counts too")
+	W.Fire("PLAYER_TARGET_CHANGED")
+	W.Advance(0.12)
+	H.True(RangeText(Range) ~= "Melee", "a new target needs its own swing")
 end)
 
 test("range: in combat it never calls the restricted distance check", function()
@@ -369,11 +438,65 @@ test("camera: max distance is only touched when you turn it on", function()
 	H.Equal(W2.cvars.cameraDistanceMaxZoomFactor, "2.6", "applied again at login")
 end)
 
+test("camera: the zoom out button raises the max distance, then zooms all the way out", function()
+	local W = Setup()
+	local Camera = W.ns.modules.Camera
+	H.False(Camera.db.enabled, "off to begin with")
+	W.Slash("camera zoomout")
+	H.True(Camera.db.enabled, "turned on")
+	H.Equal(W.cvars.cameraDistanceMaxZoomFactor, "2.6", "max distance set")
+	H.Equal(#W.cameraZoomOuts, 0, "the zoom waits a frame")
+	W.Advance(0.05)
+	H.Equal(#W.cameraZoomOuts, 1, "zoomed out")
+	H.True(W.cameraZoomOuts[1].yards >= 39, "past the farthest the camera goes")
+	H.Equal(W.cameraZoomOuts[1].factor, "2.6", "after the max distance was raised")
+
+	-- In combat it all waits for the fight to end.
+	W.Slash("camera zoom 2")
+	W.inCombat = true
+	W.Slash("camera zoomout")
+	W.Advance(0.05)
+	H.Equal(#W.cameraZoomOuts, 1, "nothing in combat")
+	H.True(W.Printed("zooms out when this fight ends"), "says so")
+	W.inCombat = false
+	W.Fire("PLAYER_REGEN_ENABLED")
+	W.Advance(0.05)
+	H.Equal(#W.cameraZoomOuts, 2, "zoomed out after the fight")
+	H.False(W.cameraZoomOuts[2].inCombat, "out of combat")
+	H.Equal(W.cameraZoomOuts[2].factor, "2", "to the distance you picked")
+end)
+
+test("pet: Growl reminders for dungeons and raids", function()
+	local W, _, Pet = Setup()
+	W.spellNames[2649] = "Growl"
+	W.pet = { name = "Boar", level = 20, health = 500, healthMax = 500, happiness = 3, damage = 125, loyaltyRate = 1, loyalty = "Loyalty Level 2", diet = { "Meat" } }
+	W.petActions[4] = { name = "Growl", spellID = 2649, autoCastEnabled = true }
+	W.Fire("UNIT_PET", "player")
+	H.Equal(#W.sounds, 0, "solo with Growl on: nothing to say")
+	W.instanceType = "party"
+	W.Fire("PLAYER_ENTERING_WORLD", false, false)
+	H.True(W.Printed("Growl is on. In here it pulls enemies off your tank"), "in a dungeon with Growl on")
+	W.Fire("PET_BAR_UPDATE")
+	H.Equal(#W.sounds, 1, "once")
+	W.petActions[4].autoCastEnabled = false
+	W.Fire("PET_BAR_UPDATE")
+	W.instanceType = "none"
+	W.Fire("PLAYER_ENTERING_WORLD", false, false)
+	H.True(W.Printed("Back out in the world: right-click Growl on your pet bar to turn it back on."), "out again with it off")
+	W.Fire("PET_BAR_UPDATE")
+	H.Equal(#W.sounds, 2, "once")
+	W.Slash("pet growl off")
+	W.petActions[4].autoCastEnabled = true
+	W.instanceType = "raid"
+	W.Fire("PLAYER_ENTERING_WORLD", false, false)
+	H.Equal(#W.sounds, 2, "turned off")
+end)
+
 ---------------------------------------------------------------------------
 -- Layout and upgrades
 ---------------------------------------------------------------------------
 test("every options page fits in its two columns", function()
-	local W = Setup()
+	local W = Setup({ tranqKnown = true }) -- the Tranq Shot page only shows for hunters who know it
 	local window = W.ns.OptionsWindow
 	W.Slash("")
 	for index, section in ipairs(window.sections) do
@@ -384,6 +507,10 @@ test("every options page fits in its two columns", function()
 			H.True(-y + widget.height <= 408, section.name .. ": a control runs past the bottom")
 		end
 	end
+	-- and the list of pages on the left still fits in the window
+	local last = window.navButtons[#window.navButtons]
+	local _, _, _, _, top = last:GetPoint(1)
+	H.True(-top + last:GetHeight() <= window.frame:GetHeight() - 34 - 8, "the page list runs past the bottom")
 end)
 
 test("upgrading moves the old default spots off the character, but not frames you moved", function()

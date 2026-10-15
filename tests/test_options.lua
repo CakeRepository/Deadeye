@@ -27,7 +27,15 @@ test("/deadeye opens and closes the window; Escape support and the AddOns page a
 	Open(W)
 	H.True(window:IsOpen(), "open")
 	H.Equal(W.env.UISpecialFrames[1], "DeadeyeOptionsFrame", "closes with Escape")
-	H.Equal(#window.sections, 13, "pages: 6 Auto Shot, 3 range, 3 pet, 1 camera")
+	local pages = 0
+	for _, module in ipairs(W.ns:GetModules()) do
+		if module.enabled and module.GetOptionSections then
+			pages = pages + #module:GetOptionSections()
+		end
+	end
+	H.Equal(#window.sections, pages, "every module's pages")
+	H.Equal(#window.navButtons, pages, "a button for each in the list")
+	H.True(pages >= 14, "Auto Shot, range, ammo, pet and camera pages at least")
 	H.True(window.navButtons[1].selected:IsShown(), "first page selected")
 	W.Slash("")
 	H.False(window:IsOpen(), "closed")

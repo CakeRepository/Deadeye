@@ -9,6 +9,12 @@
 --    combat, while UnitAttackSpeed / UnitRangedDamage return secret values there.
 --  * If you are still moving when the shot is due, the client reports
 --    UNIT_SPELLCAST_FAILED_QUIET for Auto Shot and retries about every 0.5s.
+--  * Casting holds the shot back too, so a cast-time shot such as Aimed Shot
+--    fits between two Auto Shots only if it ends before the aim window. The bar
+--    marks the last moment to start one, from the cast time C_Spell.GetSpellInfo
+--    lists or your last real cast of it. While you cast, UnitCastingInfo says
+--    where the cast ends. Forever's API docs keep both readable for your own
+--    casts, except for spells flagged as always secret.
 --  * The combat log is closed to addons, so nothing here depends on it.
 local _, ns = ...
 local L = ns.L
@@ -28,6 +34,10 @@ local AutoShot = ns:NewModule("AutoShot", {
 	showMarker = true,
 	showAimZone = true,
 	aimZoneAlpha = 0.3,
+	weaveSpell = "AUTO", -- the cast-time shot to fit between Auto Shots (see WEAVE_SPELLS)
+	showSafeWindow = true, -- where starting it still ends before the aim window
+	showCastEnd = true, -- while casting: where the cast ends, and its overlap with the aim window
+	showClipText = true, -- "+0.4": how long a cast holds back the shot
 	icon = "NONE",
 	font = "Default",
 	fontSize = 10,
@@ -52,6 +62,8 @@ local AutoShot = ns:NewModule("AutoShot", {
 		idle = { 0.45, 0.45, 0.45 },
 		text = { 1, 1, 1 },
 		outOfRangeText = { 1, 0.35, 0.35 },
+		safe = { 0.35, 0.75, 1, 0.5 }, -- the safe-to-cast window (lines are drawn solid)
+		clip = { 1, 0.25, 0.25, 0.6 }, -- a cast running into the aim window
 	},
 	outOfRangeAlpha = 0.5,
 	aimTime = 0.5, -- seconds you must stand still before each shot
@@ -93,6 +105,17 @@ local RANGE_HINTS = {
 local PROBLEM_SECONDS = 1.2
 local DELAY_TOLERANCE = 0.15 -- shot-to-shot jitter that does not count as a delay
 local MAX_DELAY = 10 -- longer gaps are breaks between pulls, not delays
+-- Cast-time shots to fit between Auto Shots, looked up by name so any rank
+-- counts. Classic lists Multi-Shot as instant: it only counts once Forever
+-- lists a cast time for it, or you are seen casting it.
+local WEAVE_SPELLS = {
+	{ key = "AIMED", id = 19434 }, -- Aimed Shot
+	{ key = "MULTI", id = 2643 }, -- Multi-Shot
+}
+local WEAVE_POLL = 0.5 -- how often the spell's cast time is looked up again
+local SAMPLE_CAST = 1.0 -- shown by the preview and test mode when you know no cast-time shot
+local LINE_WIDTH = 2
+local MIN_CLIP_TEXT = 0.05 -- shorter delays are not worth a "+0.0"
 
 -- point on the text, point on the bar, x, y, justification
 local TEXT_ANCHORS = {
@@ -138,9 +161,20 @@ local CHOICES = {
 		{ value = "combat", text = L["In combat"] },
 		{ value = "always", text = L["Always"] },
 	},
+	weaveSpell = {
+		{ value = "AUTO", text = L["Aimed Shot, else Multi-Shot"] },
+		{ value = "AIMED", text = L["Aimed Shot"] },
+		{ value = "MULTI", text = L["Multi-Shot"] },
+	},
 }
 
 local IsPlayerMoving, IsFalling = IsPlayerMoving, IsFalling
+
+-- Auto Shot delays in one fight: castDelayed / castLost are the shots held back
+-- by casting into the aim window, and how much of the lost time that was.
+local function NewFight()
+	return { shots = 0, delayed = 0, lost = 0, castDelayed = 0, castLost = 0 }
+end
 
 local state = {
 	shooting = false, -- Auto Shot is toggled on
@@ -155,6 +189,12 @@ local state = {
 	countFrom = nil, -- last shot while Auto Shot stayed on (for the delay report)
 	speed = nil, -- last known ranged speed (always a plain number)
 	castGUID = nil, -- set while casting or channeling anything but Auto Shot
+	castStart = nil, -- GetTime() when that cast started
+	castEnds = nil, -- when it will end, or nil if the game won't say
+	heldCasting = 0, -- seconds spent casting since this cycle's aim window opened
+	weaveCast = nil, -- cast time of the spell to fit between shots (nil: none known)
+	nextWeaveCheck = 0,
+	learned = {}, -- [spell name] = { seconds =, listedMs = }: your last real cast of a weave spell
 	moving = false, -- event-tracked fallback if IsPlayerMoving is unavailable
 	inRange = nil, -- true, false or nil (unknown / no target)
 	nextRangeCheck = 0,
@@ -167,7 +207,7 @@ local state = {
 	cueFor = nil, -- cycle the stop-moving sound already played for
 	test = false, -- /deadeye test
 	preview = false, -- the options window is open
-	fight = { shots = 0, delayed = 0, lost = 0 }, -- Auto Shot delays this fight
+	fight = NewFight(), -- Auto Shot delays this fight
 	lastFight = nil,
 }
 
@@ -249,12 +289,14 @@ local function StartCycle(start, duration, synthetic)
 	state.start, state.duration = start, duration
 	state.synthetic, state.fake, state.due = synthetic or false, false, false
 	state.retryAt = nil
+	state.heldCasting = 0
 end
 
 local function ClearCycle()
 	state.start, state.duration = nil, nil
 	state.synthetic, state.fake, state.due = false, false, false
 	state.retryAt = nil
+	state.heldCasting = 0
 end
 
 local function CycleActive(now)
@@ -293,6 +335,142 @@ local function Evaluate(now)
 end
 
 ---------------------------------------------------------------------------
+-- Casting between shots
+---------------------------------------------------------------------------
+-- Start and end of your cast (or channel) in ms, on GetTime()'s clock, if the
+-- game lets addons read them. UnitCastingInfo and UnitChannelInfo are only
+-- secret for other units, and for spells flagged as always secret.
+local function CastTimes(channel)
+	local info
+	if channel then
+		info = UnitChannelInfo
+	else
+		info = UnitCastingInfo
+	end
+	if not info then
+		return nil
+	end
+	local _, _, _, startMs, endMs = info("player")
+	startMs, endMs = ns.Readable(startMs), ns.Readable(endMs)
+	if startMs and endMs and endMs > startMs then
+		return startMs, endMs
+	end
+end
+
+-- Whether you know a spell (looked up by name, so any rank counts) and the cast
+-- time the game lists for it in ms, or nil if it won't say.
+local function Listing(name)
+	local info = name and C_Spell.GetSpellInfo and ns.Readable(C_Spell.GetSpellInfo(name))
+	if type(info) ~= "table" then
+		return false
+	end
+	return true, ns.Readable(info.castTime)
+end
+
+-- A spell's cast time in seconds: your last real cast of it, unless the time
+-- the game lists for it changed since (a haste buff came or went, say). A
+-- spell listed as instant counts once you are seen casting it.
+local function CastSeconds(name, listedMs)
+	local learned = state.learned[name]
+	if learned and learned.listedMs == listedMs then
+		return learned.seconds
+	elseif listedMs then
+		return listedMs > 0 and listedMs / 1000 or nil
+	end
+	return learned and learned.seconds
+end
+
+local function IsWeaveSpell(name)
+	for _, spell in ipairs(WEAVE_SPELLS) do
+		if ns.Readable(C_Spell.GetSpellName(spell.id)) == name then
+			return true
+		end
+	end
+	return false
+end
+
+-- Looks up the cast time of the spell you fit between shots: the one picked in
+-- the options, or Aimed Shot, else Multi-Shot if it has a cast.
+local function UpdateWeave(now)
+	if now < state.nextWeaveCheck then
+		return
+	end
+	state.nextWeaveCheck = now + WEAVE_POLL
+	state.weaveCast = nil
+	local choice = AutoShot.db.weaveSpell
+	for _, spell in ipairs(WEAVE_SPELLS) do
+		if choice == "AUTO" or choice == spell.key then
+			local name = ns.Readable(C_Spell.GetSpellName(spell.id))
+			local known, listedMs = Listing(name)
+			local seconds = known and CastSeconds(name, listedMs)
+			if seconds then
+				state.weaveCast = seconds
+				return
+			end
+		end
+	end
+end
+
+local function WeaveCastTime(now)
+	UpdateWeave(now)
+	return state.weaveCast or (state.fake and SAMPLE_CAST or nil)
+end
+
+local function ClearCast()
+	state.castGUID, state.castStart, state.castEnds = nil, nil, nil
+end
+
+-- The cast is over (or a shot proved it). Casting after the aim window opened
+-- held the shot back; CountShot charges that to casting.
+local function EndCast(now)
+	if state.castStart and state.start and not state.fake then
+		local aimStart = state.start + math.max(state.duration - AimWindow(), 0)
+		local held = now - math.max(state.castStart, aimStart)
+		if held > 0 then
+			state.heldCasting = state.heldCasting + held
+		end
+	end
+	ClearCast()
+end
+
+-- A cast or channel started: its end goes on the bar, and a weave spell's real
+-- cast time is remembered for the safe-to-cast window.
+local function BeginCast(castGUID, spellID, channel)
+	local now = GetTime()
+	if state.castGUID ~= nil then
+		EndCast(now)
+	end
+	state.castGUID = ns.Readable(castGUID, true)
+	state.castStart = now
+	local name = not ns.IsSecret(spellID) and spellID and ns.Readable(C_Spell.GetSpellName(spellID)) or nil
+	local startMs, endMs = CastTimes(channel)
+	if startMs then
+		state.castEnds = endMs / 1000
+		if name and not channel and IsWeaveSpell(name) then
+			local _, listedMs = Listing(name)
+			state.learned[name] = { seconds = (endMs - startMs) / 1000, listedMs = listedMs }
+			state.nextWeaveCheck = 0
+			ns.Debug("Cast:", name, "takes", (endMs - startMs) / 1000, "| listed", listedMs and listedMs / 1000)
+		end
+	elseif name then
+		-- The game won't say when it ends: go by the spell's cast time.
+		local info = C_Spell.GetSpellInfo and ns.Readable(C_Spell.GetSpellInfo(spellID))
+		local seconds = CastSeconds(name, type(info) == "table" and ns.Readable(info.castTime) or nil)
+		state.castEnds = seconds and now + seconds or nil
+	end
+end
+
+-- Pushback: the game moved the end of the cast or channel.
+local function MoveCastEnd(channel)
+	if state.castGUID ~= nil then
+		local _, endMs = CastTimes(channel)
+		if endMs then
+			state.castEnds = endMs / 1000
+		end
+	end
+end
+
+---------------------------------------------------------------------------
 -- Bar
 ---------------------------------------------------------------------------
 function AutoShot:CreateBar()
@@ -321,6 +499,11 @@ function AutoShot:CreateBar()
 
 	-- Tinted zone at the end of the bar: the aim window, where you stand still.
 	bar.aimZone = bar:CreateTexture(nil, "ARTWORK")
+	-- Also under the fill: the stretch after a shot where you can start the weave
+	-- spell and still finish before the aim window, and the part of the aim
+	-- window the cast in progress runs into (drawn over the aim window's tint).
+	bar.safeZone = bar:CreateTexture(nil, "ARTWORK")
+	bar.clipZone = bar:CreateTexture(nil, "ARTWORK", nil, 1)
 
 	bar.icon = bar:CreateTexture(nil, "ARTWORK")
 	bar.icon:SetTexture(C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(AUTO_SHOT_SPELL_ID) or AUTO_SHOT_ICON)
@@ -339,8 +522,17 @@ function AutoShot:CreateBar()
 	bar.spark:SetColorTexture(1, 1, 1, 0.9)
 	bar.spark:SetBlendMode("ADD")
 
+	-- Over the fill: the last moment to start the weave spell, and where the
+	-- cast in progress ends.
+	bar.safeLine = status:CreateTexture(nil, "OVERLAY")
+	bar.castLine = status:CreateTexture(nil, "OVERLAY")
+
 	bar.label = status:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmallOutline")
 	bar.time = status:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmallOutline")
+	bar.clipText = status:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmallOutline") -- "+0.4"
+	for _, piece in ipairs({ bar.safeZone, bar.clipZone, bar.safeLine, bar.castLine, bar.clipText }) do
+		piece:Hide()
+	end
 
 	ns.Frames.MakeMovable(self, bar, L["Auto Shot"])
 	self.bar = bar
@@ -429,11 +621,13 @@ function AutoShot:ApplyLayout()
 	status:SetOrientation(vertical and "VERTICAL" or "HORIZONTAL")
 	status:SetReverseFill(reverse)
 
-	-- The aim window sits where the fill ends; the marker is its inner edge.
-	local aimZone, marker, spark = bar.aimZone, bar.marker, bar.spark
+	-- The aim window sits where the fill ends; the marker is its inner edge. A
+	-- cast's "+0.4" sits just before the marker.
+	local aimZone, marker, spark, clipText = bar.aimZone, bar.marker, bar.spark, bar.clipText
 	aimZone:ClearAllPoints()
 	marker:ClearAllPoints()
 	spark:ClearAllPoints()
+	clipText:ClearAllPoints()
 	if vertical then
 		local outer, inner = reverse and "BOTTOM" or "TOP", reverse and "TOP" or "BOTTOM"
 		aimZone:SetPoint(outer .. "LEFT")
@@ -442,6 +636,7 @@ function AutoShot:ApplyLayout()
 		marker:SetPoint("RIGHT", aimZone, inner .. "RIGHT")
 		marker:SetHeight(1)
 		spark:SetSize(db.width, 2)
+		clipText:SetPoint(outer, marker, inner, 0, reverse and 2 or -2)
 	else
 		local outer, inner = reverse and "LEFT" or "RIGHT", reverse and "RIGHT" or "LEFT"
 		aimZone:SetPoint("TOP" .. outer)
@@ -450,15 +645,22 @@ function AutoShot:ApplyLayout()
 		marker:SetPoint("BOTTOM", aimZone, "BOTTOM" .. inner)
 		marker:SetWidth(1)
 		spark:SetSize(2, db.height)
+		clipText:SetPoint(outer, marker, inner, reverse and 2 or -2, 0)
 	end
 	local aim = db.colors.aim
 	aimZone:SetColorTexture(aim[1], aim[2], aim[3], db.aimZoneAlpha)
 	aimZone:SetShown(db.showAimZone)
 	marker:SetShown(db.showMarker)
+	local safe, clip = db.colors.safe, db.colors.clip
+	bar.safeZone:SetColorTexture(safe[1], safe[2], safe[3], safe[4] or 1)
+	bar.clipZone:SetColorTexture(clip[1], clip[2], clip[3], clip[4] or 1)
+	state.nextWeaveCheck = 0 -- settings changed: look the weave spell up again
 
 	self:ApplyText(bar.label, db.labelPosition)
 	self:ApplyText(bar.time, db.timerPosition)
 	self.timerFormat = "%." .. db.timerDecimals .. "f"
+	ns.Media.ApplyFont(clipText, db.font, db.fontSize, db.fontOutline)
+	self.clipFormat = "+%." .. math.max(db.timerDecimals, 1) .. "f"
 	self:ApplyIcon()
 
 	ns.Frames.UpdateMover(bar)
@@ -466,6 +668,10 @@ function AutoShot:ApplyLayout()
 	local range = ns.modules.Range
 	if range and range.frame then
 		range:ApplyAnchor() -- the range text can sit on top of the bar
+	end
+	local ammo = ns.modules.Ammo
+	if ammo and ammo.frame then
+		ammo:ApplyAnchor() -- the ammo counter can sit beside the bar
 	end
 	self:Refresh()
 end
@@ -526,6 +732,96 @@ function AutoShot:PlayCue(now, phase)
 	PlaySound(sound, "Master")
 end
 
+-- Centers a texture on the bar offset pixels from where the fill starts, size
+-- pixels long and as thick as the bar.
+function AutoShot:PlaceAlong(texture, offset, size)
+	local db, bar = self.db, self.bar
+	texture:ClearAllPoints()
+	if db.orientation == "VERTICAL" then
+		texture:SetPoint("CENTER", bar, db.reverseFill and "TOP" or "BOTTOM", 0, db.reverseFill and -offset or offset)
+		texture:SetSize(db.width, size)
+	else
+		texture:SetPoint("CENTER", bar, db.reverseFill and "RIGHT" or "LEFT", db.reverseFill and -offset or offset, 0)
+		texture:SetSize(size, db.height)
+	end
+	texture:Show()
+end
+
+-- A stretch of the cycle, from and to as fractions of it (0 is the last shot,
+-- 1 the next one), or nothing when from is nil.
+function AutoShot:PlaceSpan(texture, from, to)
+	local length = self.db.orientation == "VERTICAL" and self.db.height or self.db.width
+	local size = from and (to - from) * length or 0
+	if size < 1 then
+		texture:Hide()
+		return
+	end
+	self:PlaceAlong(texture, (from + to) / 2 * length, size)
+end
+
+-- A solid line at a fraction of the cycle, kept inside the bar, or nothing.
+function AutoShot:PlaceLine(line, at, color)
+	if not at then
+		line:Hide()
+		return
+	end
+	local length = self.db.orientation == "VERTICAL" and self.db.height or self.db.width
+	local half = LINE_WIDTH / 2
+	self:PlaceAlong(line, math.min(math.max(at * length, half), length - half), LINE_WIDTH)
+	line:SetColorTexture(color[1], color[2], color[3], 1)
+end
+
+-- Casting between shots. Not casting: the stretch after a shot where starting
+-- the weave spell still ends before the aim window, and a line at its last
+-- safe moment. If the spell can't fit, the line goes right after the shot,
+-- where it costs least, with "+0.6" for that cost. Casting: a line where the
+-- cast ends, the part of the aim window it runs into, and how long that holds
+-- the shot back.
+function AutoShot:RenderWeave(now, phase, duration)
+	local db, bar = self.db, self.bar
+	local safeTo, lineAt, lineColor, castAt, castColor, clipFrom, clipTo, delay
+	if phase ~= "idle" and state.start and duration and duration > 0 then
+		local reload = math.max(duration - AimWindow(), 0)
+		if state.castGUID ~= nil then
+			if state.castEnds then
+				local ends = state.castEnds - state.start
+				local over = ends - reload
+				if db.showCastEnd then
+					castAt, castColor = math.min(math.max(ends / duration, 0), 1), over > 0 and db.colors.clip or db.colors.safe
+					if over > 0 then
+						clipFrom, clipTo = reload / duration, math.min(ends / duration, 1)
+					end
+				end
+				delay = db.showClipText and over or nil
+			end
+		elseif db.showSafeWindow then
+			local cast = WeaveCastTime(now)
+			if cast then
+				local latest = reload - cast
+				if latest >= 0 then
+					safeTo, lineAt, lineColor = latest / duration, latest / duration, db.colors.safe
+				else
+					lineAt, lineColor = 0, db.colors.clip
+					delay = db.showClipText and -latest or nil
+				end
+			end
+		end
+	end
+	self:PlaceSpan(bar.safeZone, safeTo and 0, safeTo)
+	self:PlaceLine(bar.safeLine, lineAt, lineColor)
+	self:PlaceSpan(bar.clipZone, clipFrom, clipTo)
+	self:PlaceLine(bar.castLine, castAt, castColor)
+	local clipText = bar.clipText
+	if delay and delay >= MIN_CLIP_TEXT then
+		local clip = db.colors.clip
+		clipText:SetFormattedText(self.clipFormat, delay)
+		clipText:SetTextColor(clip[1], clip[2], clip[3])
+		clipText:Show()
+	else
+		clipText:Hide()
+	end
+end
+
 function AutoShot:Render(now)
 	UpdateLatency(now)
 	CheckRange(now)
@@ -564,6 +860,7 @@ function AutoShot:Render(now)
 	else
 		spark:Hide()
 	end
+	self:RenderWeave(now, phase, duration)
 
 	self:PlayCue(now, phase)
 
@@ -664,18 +961,29 @@ local function CountShot(now, previousStart, previousDuration)
 	if late > DELAY_TOLERANCE and late < MAX_DELAY then
 		fight.delayed = fight.delayed + 1
 		fight.lost = fight.lost + late
+		-- Time spent casting after the aim window opened held the shot back for
+		-- that long at most; the rest of the delay was moving.
+		if state.heldCasting > DELAY_TOLERANCE then
+			fight.castDelayed = fight.castDelayed + 1
+			fight.castLost = fight.castLost + math.min(late, state.heldCasting)
+			ns.Debug("Auto Shot held back", late, "| casting", state.heldCasting)
+		end
 	end
 end
 
 local function DescribeFight(fight)
-	return string.format(L["%d shots, %d held back, %.1fs of Auto Shot lost to moving or casting."],
+	local text = string.format(L["%d shots, %d held back, %.1fs of Auto Shot lost to moving or casting."],
 		fight.shots, fight.delayed, fight.lost)
+	if fight.castDelayed > 0 then
+		text = string.format(L["%s Casting held back %d of them and cost %.1fs."], text, fight.castDelayed, fight.castLost)
+	end
+	return text
 end
 
 function AutoShot:ReportFight()
 	local fight = state.fight
 	state.lastFight = fight
-	state.fight = { shots = 0, delayed = 0, lost = 0 }
+	state.fight = NewFight()
 	if self.db.reportDelays and fight.shots >= 3 then
 		ns.Print(L["Last fight: %s"]:format(DescribeFight(fight)))
 	end
@@ -715,7 +1023,8 @@ function AutoShot:GetOptionSections()
 		},
 		{
 			name = L["Bar"],
-			keys = { "texture", "background", "borderSize", "borderColor", "showSpark", "showMarker", "showAimZone", "aimZoneAlpha", "icon" },
+			keys = { "texture", "background", "borderSize", "borderColor", "showSpark", "showMarker", "showAimZone", "aimZoneAlpha", "icon",
+				"weaveSpell", "showSafeWindow", "showCastEnd", "showClipText", "colors.safe", "colors.clip" },
 			controls = {
 				{ type = "select", label = L["Texture"], key = "texture", slash = "texture",
 					values = function() return ns.Media.List("statusbar") end },
@@ -727,11 +1036,19 @@ function AutoShot:GetOptionSections()
 				{ type = "toggle", label = L["Line where the aim window starts"], key = "showMarker", slash = "marker" },
 				{ type = "toggle", label = L["Shade the aim window"], key = "showAimZone", slash = "shade" },
 				{ type = "range", label = L["Aim window shading"], key = "aimZoneAlpha", min = 0, max = 1, step = 0.05, slash = "shadealpha" },
+				{ type = "header", label = L["Casting between shots"] },
+				{ type = "select", label = L["Spell to fit between shots"], key = "weaveSpell", values = CHOICES.weaveSpell, slash = "weavespell" },
+				{ type = "toggle", label = L["Show where it's safe to start it"], key = "showSafeWindow", slash = "safewindow" },
+				{ type = "toggle", label = L["Show where a cast will end"], key = "showCastEnd", slash = "castend" },
+				{ type = "toggle", label = L["Show how much a cast delays the shot"], key = "showClipText", slash = "clipdelay" },
+				{ type = "color", label = L["Safe to start the cast"], key = "colors.safe", alpha = true, slash = "safecolor" },
+				{ type = "color", label = L["Cast runs into the aim window"], key = "colors.clip", alpha = true, slash = "clipcolor" },
+				{ type = "note", text = L["Start the spell before its line to finish it before the aim window. If it can't fit, the line moves to the start of the bar and a number shows the least it will cost. Multi-Shot only counts if it has a cast time."] },
 			},
 		},
 		{
 			name = L["Colors"],
-			keys = { "colors", "outOfRangeAlpha" },
+			keys = { "colors.reload", "colors.aim", "colors.blocked", "colors.idle", "colors.text", "colors.outOfRangeText", "outOfRangeAlpha" },
 			controls = {
 				{ type = "header", label = L["Bar fill"] },
 				{ type = "color", label = L["Reloading (move freely)"], key = "colors.reload", slash = "reloadcolor" },
@@ -887,7 +1204,8 @@ function AutoShot:OnEnable()
 		"UNIT_ATTACK_SPEED", "UNIT_RANGEDDAMAGE",
 		"UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_FAILED_QUIET",
 		"UNIT_SPELLCAST_START", "UNIT_SPELLCAST_STOP", "UNIT_SPELLCAST_FAILED", "UNIT_SPELLCAST_INTERRUPTED",
-		"UNIT_SPELLCAST_CHANNEL_START", "UNIT_SPELLCAST_CHANNEL_STOP",
+		"UNIT_SPELLCAST_DELAYED", "UNIT_SPELLCAST_CHANNEL_START", "UNIT_SPELLCAST_CHANNEL_UPDATE",
+		"UNIT_SPELLCAST_CHANNEL_STOP",
 	}) do
 		events:RegisterUnitEvent(event, "player")
 	end
@@ -918,10 +1236,10 @@ function AutoShot:PLAYER_SWING(duration, swingType)
 	else
 		ns.Debug("Auto Shot: speed", duration)
 	end
+	EndCast(now) -- a shot cannot go off mid-cast, so any cast is over
 	CountShot(now, state.countFrom, state.lastDuration)
 	state.lastSwing, state.countFrom, state.lastDuration = now, now, duration
 	state.speed = duration
-	state.castGUID = nil -- a shot cannot go off mid-cast, so any cast is over
 	state.problem, state.rangeHint = nil, nil -- and nothing is in the way any more
 	StartCycle(now, duration)
 	self:Refresh()
@@ -1001,13 +1319,27 @@ end
 
 function AutoShot:UNIT_SPELLCAST_START(_, castGUID, spellID)
 	if not IsAutoShot(spellID) then
-		state.castGUID = ns.Readable(castGUID, true)
+		BeginCast(castGUID, spellID, false)
 	end
 end
-AutoShot.UNIT_SPELLCAST_CHANNEL_START = AutoShot.UNIT_SPELLCAST_START
+
+function AutoShot:UNIT_SPELLCAST_CHANNEL_START(_, castGUID, spellID)
+	if not IsAutoShot(spellID) then
+		BeginCast(castGUID, spellID, true)
+	end
+end
+
+-- Pushback moves the end of a cast later and cuts a channel short.
+function AutoShot:UNIT_SPELLCAST_DELAYED()
+	MoveCastEnd(false)
+end
+
+function AutoShot:UNIT_SPELLCAST_CHANNEL_UPDATE()
+	MoveCastEnd(true)
+end
 
 function AutoShot:UNIT_SPELLCAST_STOP()
-	state.castGUID = nil
+	EndCast(GetTime())
 end
 AutoShot.UNIT_SPELLCAST_CHANNEL_STOP = AutoShot.UNIT_SPELLCAST_STOP
 AutoShot.UNIT_SPELLCAST_INTERRUPTED = AutoShot.UNIT_SPELLCAST_STOP
@@ -1017,7 +1349,7 @@ AutoShot.UNIT_SPELLCAST_INTERRUPTED = AutoShot.UNIT_SPELLCAST_STOP
 -- as true; then any failure ends it.)
 function AutoShot:UNIT_SPELLCAST_FAILED(_, castGUID)
 	if state.castGUID == true or ns.Readable(castGUID) == state.castGUID then
-		state.castGUID = nil
+		EndCast(GetTime())
 	end
 end
 
@@ -1068,7 +1400,8 @@ end
 
 function AutoShot:PLAYER_ENTERING_WORLD()
 	state.shooting = false
-	state.castGUID, state.countFrom = nil, nil
+	state.countFrom = nil
+	ClearCast()
 	ClearCycle()
 	RefreshSpeed()
 	self:Refresh()
@@ -1076,7 +1409,8 @@ end
 
 function AutoShot:PLAYER_DEAD()
 	state.shooting = false
-	state.castGUID, state.countFrom = nil, nil
+	state.countFrom = nil
+	ClearCast()
 	ClearCycle()
 	self:Refresh()
 end

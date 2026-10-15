@@ -15,6 +15,7 @@ ns.OptionsWindow = Window
 
 local WIDTH, HEIGHT = 720, 500
 local NAV_WIDTH = 170
+local NAV_ROW = 24 -- height of each page's button in the list on the left
 local TITLE_HEIGHT = 34
 local FOOTER_HEIGHT = 46
 local PADDING = 16
@@ -142,8 +143,8 @@ end
 function Window:BuildNavigation()
 	for index, section in ipairs(self.sections) do
 		local button = CreateFrame("Button", nil, self.nav)
-		button:SetSize(NAV_WIDTH - 16, 26)
-		button:SetPoint("TOPLEFT", 8, -(PADDING + (index - 1) * 30))
+		button:SetSize(NAV_WIDTH - 16, NAV_ROW - 2)
+		button:SetPoint("TOPLEFT", 8, -(PADDING + (index - 1) * NAV_ROW))
 		button.selected = Fill(button, "BACKGROUND", COLORS.selected)
 		button.selected:SetAllPoints()
 		button.selected:Hide()

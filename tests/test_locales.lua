@@ -147,7 +147,7 @@ end
 
 for _, locale in ipairs(LOCALES) do
 	test(locale .. ": the addon runs, every page fits, and texts are translated", function()
-		local W = H.NewWorld({ locale = locale })
+		local W = H.NewWorld({ locale = locale, tranqKnown = true }) -- so the Tranq Shot page is there too
 		H.LoadAddon(W, ROOT)
 		local L, AS = W.ns.L, W.ns.modules.AutoShot
 		H.True(rawget(L, "Reload") ~= nil, "translations loaded")
@@ -159,6 +159,7 @@ for _, locale in ipairs(LOCALES) do
 			"width", "width abc", "width 250", "bordercolor", "bordercolor zz", "label", "outline none",
 			"playsound", "debug", "debug", "move", "move", "text off", "text on", "stats",
 			"range", "range bogus", "pet", "pet unskip", "camera", "camera zoom 2",
+			"ammo", "ammo bogus", "aspect", "tranq", "settings ammo", "settings tranq",
 		}) do
 			W.Slash(input)
 		end
@@ -233,6 +234,54 @@ for _, locale in ipairs(LOCALES) do
 		W.Fire("PLAYER_REGEN_DISABLED")
 		W.inCombat = false
 		W.Fire("PLAYER_REGEN_ENABLED")
+
+		-- Ammo: the counter, its warnings and the vendor button.
+		W.bags = { [0] = { size = 16 }, [1] = { size = 6, family = 1 } }
+		W.equipped[18], W.equipped[0] = 2504, 2512
+		W.AddItem(2512, 300)
+		W.Fire("PLAYER_EQUIPMENT_CHANGED", 0, true)
+		local Ammo = W.ns.modules.Ammo
+		Ammo.frame.scripts.OnEnter(Ammo.frame)
+		W.UseItem(2512, 150)
+		W.UseItem(2512, 150)
+		W.inCombat = true
+		W.Fire("PLAYER_REGEN_DISABLED")
+		W.inCombat = false
+		W.Fire("PLAYER_REGEN_ENABLED")
+		W.OpenVendor({ { itemID = 2512, price = 10 } })
+		local fill = Ammo.vendorButtonFrame
+		fill.scripts.OnEnter(fill)
+		W.Click(fill)
+		W.Advance(3)
+		fill.scripts.OnEnter(fill)
+		Ammo:Fill()
+		W.Click(fill, "RightButton")
+		W.Click(fill, "RightButton")
+		W.CloseVendor()
+		W.equipped[0] = nil
+		W.Fire("PLAYER_EQUIPMENT_CHANGED", 0, false)
+		Ammo.frame.scripts.OnEnter(Ammo.frame)
+		W.inCombat = true
+		W.Fire("PLAYER_REGEN_DISABLED")
+		W.inCombat = false
+		W.Fire("PLAYER_REGEN_ENABLED")
+
+		-- Aspect warnings and alerts, and the camera's zoom out.
+		W.knownSpells = { [13165] = true }
+		W.CastAspect(5118)
+		W.inCombat = true
+		W.Fire("PLAYER_REGEN_DISABLED")
+		W.Advance(0.2)
+		W.CancelBuff("Aspect of the Cheetah")
+		W.Advance(0.2)
+		W.inCombat = false
+		W.Fire("PLAYER_REGEN_ENABLED")
+		W.inCombat = true
+		W.Fire("PLAYER_REGEN_DISABLED")
+		W.Slash("camera zoomout")
+		W.inCombat = false
+		W.Fire("PLAYER_REGEN_ENABLED")
+		W.Advance(0.1)
 
 		-- The minimap addon button's tooltip.
 		W.env.Deadeye_OnAddonCompartmentEnter(nil, button)
