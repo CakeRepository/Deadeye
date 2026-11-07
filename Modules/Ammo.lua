@@ -228,9 +228,10 @@ end
 ---------------------------------------------------------------------------
 -- The counter
 ---------------------------------------------------------------------------
-function Ammo:Alert(message)
+-- fightStart: one of the alerts a fight starts with (see ns.FightStartSoundOption).
+function Ammo:Alert(message, fightStart)
 	ns.Print(message)
-	local sound = ns.Media.Sound(self.db.alertSound)
+	local sound = ns.AlertSound(self.db.alertSound, fightStart)
 	if sound then
 		PlaySound(sound, "Master")
 	end
@@ -814,6 +815,7 @@ function Ammo:GetOptionSections()
 	for _, spec in ipairs({
 		{ type = "range", label = L["Running low below"], key = "lowAmount", min = 0, max = 2000, step = 50, slash = "low" },
 		{ type = "toggle", label = L["Warn me when I'm running low"], key = "lowAlert", slash = "lowalert" },
+		ns.FightStartSoundOption(),
 		{ type = "toggle", label = L["Swap in other ammo when mine runs out"], key = "autoSwap", slash = "swap" },
 		{ type = "header", label = L["At vendors"] },
 		{ type = "toggle", label = L["Restock button at vendors"], key = "vendorButton", slash = "button" },
@@ -877,11 +879,11 @@ function Ammo:PLAYER_REGEN_DISABLED()
 		return
 	end
 	if not self.itemID then
-		self:Alert(L["Your ammo slot is empty."])
+		self:Alert(L["Your ammo slot is empty."], true)
 	elseif self.count == 0 then
-		self:Alert(L["You're out of ammo."])
+		self:Alert(L["You're out of ammo."], true)
 	elseif self.count and self.count < self.db.lowAmount then
-		self:Alert(L["Running low on ammo: %d left."]:format(self.count))
+		self:Alert(L["Running low on ammo: %d left."]:format(self.count), true)
 	end
 end
 

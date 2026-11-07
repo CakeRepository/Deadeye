@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.5.1-beta
+
+- **Pet commands:** your pet panel works as a remote for the calls you make in a hurry.
+  - **Click** it to send your pet in, opening with Charge for a boar (Dash or Dive for other
+    pets). Click again to call it back, on passive so it stays out, even while it's still running
+    in. Sent in again, it gets its stance back.
+  - **Right-click** parks it where it stands. **Shift-right-click** uses the game's Move To:
+    click the ground where it should wait.
+  - **Shift-click** changes its stance, shown at the panel's top right.
+  - With no pet out a click casts Call Pet, and with a dead one Revive Pet.
+  - The panel lights up when Charge would land.
+  - Every command has a key binding (Key Bindings > AddOns > Deadeye), and **Make pet macros**
+    on the **Pet: commands** page puts them in your macros, to drag onto your bars. The macros
+    hold the commands themselves; the stance macro is passive, shift for defensive, ctrl for
+    aggressive.
+  - **Duels:** when a duel is asked for, by you or of you, a button above the panel holds your
+    pet back, so it doesn't run in when the duel starts.
+- **Revive button:** while your pet is dead, a Revive Pet button takes the feed button's place.
+  It comes up the moment your pet dies, even in combat. Turn it off on the **Pet: feeding** page.
+- **Sound when a fight starts:** a new checkbox on the Aspect, Ammo and Pet alert pages turns off
+  just the sound of the alerts a fight can start with (no aspect, low ammo, no pet). At low levels
+  the no-aspect one could sound at almost every pull. The chat messages and every other sound
+  stay. Thanks to the player who asked.
+
 ## v0.5.0-beta
 
 - **Ammo counter** beside the Auto Shot bar: the ammo you have left, yellow when you're running

@@ -22,6 +22,9 @@ A hunter toolkit for **World of Warcraft: Forever** (interface 16001):
 - **Feed button** beside the pet panel. Click it to feed your pet. It picks the food from your
   bags, lowest level first among food close to your pet's level, and leaves food that makes you
   well fed alone. Right-click it to skip a food.
+- **Pet commands** on the pet panel: click it to send your pet in with Charge, again to call it
+  back, right-click to park it, shift-click for its stance. Key bindings and macros do the same,
+  and a duel request brings up a button that holds your pet back.
 - **Tranq Shot callout.** For hunters with Tranquilizing Shot: a big "Tranq Shot!" when a boss
   or your target enrages, and whether your shot removed it.
 - **Delay report.** After a fight, shows how much Auto Shot time you lost to moving or casting.
@@ -72,6 +75,9 @@ middle of the screen.
   fighting that lasts at the rate you shoot.
 - **Warnings** come as you drop below the mark, when you run out, when a fight starts short of
   ammo or with an empty ammo slot, and when you leave an inn or a city short.
+- **Sound when a fight starts:** the alerts a fight can start with (short of ammo, no aspect, no
+  pet) share one switch for their sound, on the Ammo, Aspect and Pet alert pages. Turn it off and
+  they still say so in chat; every other sound stays.
 - **Restocking at vendors.** When you open a vendor that sells ammo for your weapon or food your
   pet eats, Deadeye restocks you by itself, spending at most half your money (change that on the
   **Ammo** page). It says so the first time.
@@ -86,6 +92,39 @@ middle of the screen.
   **Right-click** turns restocking by itself on or off.
 - **Out of ammo:** after the fight, the best other ammo you carry goes in your ammo slot.
 - A vendor's quiver gets a tip when you have none: quivers and ammo pouches make you shoot faster.
+
+### Pet commands
+
+Your pet panel doubles as a remote for the calls you make in a hurry:
+
+- **Click** the panel to send your pet in, opening with its gap closer: Charge for a boar, Dash for
+  a cat or wolf, Dive for a bat or owl. **Click again** to call it back, on passive so it stays out.
+  That works while your pet is still running in, and a pet that's already fighting (on defensive or
+  aggressive) is called back by your first click. Sent in again, it gets back the stance it had.
+- **Right-click** parks it where it stands. **Shift-right-click** uses the game's Move To: your
+  cursor becomes a targeting circle, and your pet goes where you click and waits there.
+- **Shift-click** (or middle-click) moves it to its next stance, shown at the panel's top right.
+- **No pet out:** a click casts Call Pet. **Dead:** a click casts Revive Pet.
+- The panel **lights up** while Charge would land: your target is in range and Charge is ready.
+  Charge needs some distance, so park your boar away from the fight first.
+- **Duels:** when someone asks you to duel, or you ask them, a button above the panel holds your
+  pet back (passive, by your side) so it doesn't run in when the duel starts. Right-click it to park
+  your pet instead. Then click the panel when you want it in.
+
+Every command has a key binding under Key Bindings > AddOns > Deadeye. **Make pet macros** on the
+**Pet: commands** page (or `/deadeye commands macros`) puts them in your macros too, to drag onto
+your own bars. The macros hold the commands themselves (the game won't run what an addon button
+gives when a macro clicks it), so they work a little differently:
+
+- **Pet in/out** calls or revives your pet, calls it back if it has a target, and otherwise sends
+  it in on its stance with its opener. Deadeye keeps the stance and opener in it up to date
+  between fights, and its icon shows the opener.
+- **Pet stance:** passive; with shift, defensive; with ctrl, aggressive.
+- **Pet hold**, **Pet park** and **Pet move** do what the keys do.
+
+Addons can't command a pet on their own: only your own clicks and key presses can. So each command
+is one press of yours, and it works in combat too. The panel works as a remote while it's always
+shown (not when it only shows to ask for attention) and locked.
 
 ### Casting between shots
 
@@ -117,6 +156,8 @@ callout show which it is.
   **Pet: feeding** page, lets it use skipped food again.
 - With no food your pet eats, a click casts Feed Pet so you can pick a food in your bags yourself.
 - It lights up yellow while your pet isn't happy.
+- **While your pet is dead**, a Revive Pet button takes its place: one click casts Revive Pet. It
+  comes up the moment your pet dies, even in combat (a secure state driver shows it).
 - Blizzard doesn't let addons move, show or change a button that casts spells during a fight, so
   the button catches up when the fight ends.
 
@@ -130,6 +171,7 @@ Every setting in the window also works from chat:
 /deadeye pet <setting> <value>       pet panel, e.g. /deadeye pet feedbutton off
 /deadeye ammo <setting> <value>      ammo counter and restocking, e.g. /deadeye ammo autobuy off
 /deadeye aspect <setting> <value>    aspect reminder, e.g. /deadeye aspect none off
+/deadeye commands <setting> <value>  pet commands, e.g. /deadeye commands macros
 /deadeye tranq <setting> <value>     Tranq Shot callout, e.g. /deadeye tranq announce on
 /deadeye camera <setting> <value>    camera, e.g. /deadeye camera zoom 2.6
 /deadeye <setting>                   shows the current value and what it accepts
@@ -269,6 +311,8 @@ Modules/Range.lua       range strip and Hunter's Mark reminder
 Modules/Ammo.lua        ammo counter, warnings and forecast, restocking at vendors
 Modules/Aspect.lua      aspect reminder
 Modules/Pet.lua         pet panel, feed button, pet food and Growl reminders
+Modules/PetCommands.lua pet commands: the pet panel as a remote, key bindings, macros, duels
+Bindings.xml            key bindings for the pet commands
 Modules/Tranq.lua       Tranq Shot callout
 Modules/Camera.lua      max camera distance
 tests/                  mock client and scenario tests (tests/mocks/: mocks for newer features)

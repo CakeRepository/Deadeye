@@ -186,9 +186,10 @@ function Aspect:WarningText()
 	return L["No aspect"], self.db.color
 end
 
-function Aspect:Alert(message)
+-- fightStart: one of the alerts a fight starts with (see ns.FightStartSoundOption).
+function Aspect:Alert(message, fightStart)
 	ns.Print(message)
-	local sound = ns.Media.Sound(self.db.alertSound)
+	local sound = ns.AlertSound(self.db.alertSound, fightStart)
 	if sound then
 		PlaySound(sound, "Master")
 	end
@@ -204,6 +205,7 @@ function Aspect:GetOptionSections()
 				{ type = "toggle", label = L["In Cheetah or Pack (you get dazed)"], key = "dazeWarning", slash = "daze" },
 				{ type = "toggle", label = L["With no aspect"], key = "noAspectWarning", slash = "none" },
 				{ type = "toggle", label = L["Alert me when a fight starts that way"], key = "pullAlert", slash = "pull" },
+				ns.FightStartSoundOption(),
 				{ type = "select", label = L["Alert sound"], key = "alertSound", values = ns.Media.Sounds(), slash = "sound" },
 				{ type = "color", label = L["Warning color"], key = "color", slash = "color" },
 				{ type = "note", text = L["The warning takes the range indicator's text above the Auto Shot bar until you change aspect."] },
@@ -260,9 +262,9 @@ function Aspect:PLAYER_REGEN_DISABLED()
 	end
 	local problem = self:Problem()
 	if problem == "daze" then
-		self:Alert(L["You're fighting in %s: you'll be dazed when hit."]:format(state.aspect.name))
+		self:Alert(L["You're fighting in %s: you'll be dazed when hit."]:format(state.aspect.name), true)
 	elseif problem == "none" then
-		self:Alert(L["You're fighting without an aspect."])
+		self:Alert(L["You're fighting without an aspect."], true)
 	end
 end
 

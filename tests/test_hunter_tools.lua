@@ -466,6 +466,44 @@ test("camera: the zoom out button raises the max distance, then zooms all the wa
 	H.Equal(W.cameraZoomOuts[2].factor, "2", "to the distance you picked")
 end)
 
+test("pet: a revive button takes the feed button's place while your pet is dead", function()
+	local W, _, Pet = Setup()
+	W.pet = { name = "Boar", level = 20, health = 500, healthMax = 500, happiness = 3, damage = 125, loyaltyRate = 1, loyalty = "Loyalty Level 2", diet = { "Meat" } }
+	W.Fire("UNIT_PET", "player")
+	local feed, revive = Pet.feedButton, Pet.reviveButton
+	H.True(feed:IsShown(), "feed button while the pet is alive")
+	H.False(revive:IsShown(), "no revive button")
+	local _, _, _, feedX, feedY = feed:GetPoint(1)
+	local _, relativeTo, _, x, y = revive:GetPoint(1)
+	H.Equal(relativeTo, W.env.UIParent, "anchored to the screen, like the feed button")
+	H.Equal(x, feedX, "in the feed button's spot")
+	H.Equal(y, feedY, "in the feed button's spot")
+	H.Equal(revive:GetAttribute("spell"), 982, "casts Revive Pet")
+	-- The pet dies mid-fight: the button comes up at once, without a blocked action.
+	W.inCombat = true
+	W.Fire("PLAYER_REGEN_DISABLED")
+	W.pet.dead = true
+	W.Fire("UNIT_HEALTH", "pet")
+	H.True(revive:IsShown(), "shown in combat")
+	H.Equal(#W.blocked, 0, "nothing blocked")
+	W.Click(revive)
+	H.Equal(W.casts[#W.casts], 982, "a click casts Revive Pet")
+	revive.scripts.OnEnter(revive)
+	H.Equal(W.env.GameTooltip.lines[1], "Revive Boar", "tooltip")
+	W.pet.dead = false
+	W.Fire("UNIT_HEALTH", "pet")
+	H.False(revive:IsShown(), "gone once the pet is back")
+	W.inCombat = false
+	W.Fire("PLAYER_REGEN_ENABLED")
+	H.True(feed:IsShown(), "the feed button is back after the fight")
+	-- It can be turned off.
+	W.Slash("pet revivebutton off")
+	W.pet.dead = true
+	W.Fire("UNIT_HEALTH", "pet")
+	H.False(revive:IsShown(), "turned off")
+	H.False(feed:IsShown(), "no feeding a dead pet")
+end)
+
 test("pet: Growl reminders for dungeons and raids", function()
 	local W, _, Pet = Setup()
 	W.spellNames[2649] = "Growl"

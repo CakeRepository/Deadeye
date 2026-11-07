@@ -283,6 +283,41 @@ for _, locale in ipairs(LOCALES) do
 		W.Fire("PLAYER_REGEN_ENABLED")
 		W.Advance(0.1)
 
+		-- The pet commands: the remote's tooltip both ways, the duel button and
+		-- the macros (their names must fit the game's 16 characters).
+		W.pet = PetData()
+		W.petActions = {
+			{ name = "Charge", spellID = 7371 },
+			{ name = "PET_MODE_DEFENSIVE", token = true, active = true },
+			{ name = "PET_MODE_PASSIVE", token = true },
+		}
+		W.Fire("UNIT_PET", "player")
+		local commands = W.ns.modules.PetCommands
+		commands.remote.scripts.OnEnter(commands.remote)
+		W.hasTarget = true
+		W.Click(commands.remote)
+		commands.remote.scripts.OnEnter(commands.remote)
+		W.petActions[1] = { name = "Bite", spellID = 17253 }
+		W.Fire("PET_BAR_UPDATE")
+		W.Click(commands.remote)
+		commands.remote.scripts.OnEnter(commands.remote)
+		W.Fire("DUEL_REQUESTED", "Rival")
+		commands.prep.scripts.OnEnter(commands.prep)
+		W.bindings["CLICK DeadeyePetKeys:LeftButton"] = "F"
+		commands.prep.scripts.OnEnter(commands.prep)
+		W.Slash("commands")
+		W.Slash("commands macros")
+		W.inCombat = true
+		W.Slash("commands macros")
+		W.inCombat = false
+		for i = 1, 120 do
+			W.macroList.account[i] = { name = "Shared " .. i, icon = 1, body = "/dance" }
+		end
+		for i = 1, 30 do
+			W.macroList.character[i] = { name = "Mine " .. i, icon = 1, body = "/dance" }
+		end
+		W.Slash("commands macros")
+
 		-- The minimap addon button's tooltip.
 		W.env.Deadeye_OnAddonCompartmentEnter(nil, button)
 	end)

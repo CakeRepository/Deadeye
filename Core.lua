@@ -174,6 +174,9 @@ local function InitializeDB()
 	if db.locked == nil then
 		db.locked = true -- one lock for every Deadeye frame (see Frames.lua)
 	end
+	if db.fightStartSound == nil then
+		db.fightStartSound = true -- see ns.FightStartSoundOption
+	end
 	if type(db.modules) ~= "table" then
 		db.modules = {}
 	end
@@ -199,6 +202,28 @@ function ns:ResetSettings()
 		end
 	end
 	ns.OptionsChanged()
+end
+
+-- The alerts a fight can start with (no aspect, low ammo, no pet) share one
+-- switch for their sound, on each of their pages. Their chat text stays, and
+-- every other sound is left alone.
+function ns.FightStartSoundOption()
+	return { type = "toggle", label = L["Sound when a fight starts"], slash = "fightsound",
+		get = function()
+			return ns.db.fightStartSound
+		end,
+		set = function(value)
+			ns.db.fightStartSound = value
+			ns.OptionsChanged() -- the same switch on the other pages
+		end }
+end
+
+-- Whether an alert plays its sound: fightStart says it's one a fight starts with.
+function ns.AlertSound(soundSetting, fightStart)
+	if fightStart and not ns.db.fightStartSound then
+		return nil
+	end
+	return ns.Media.Sound(soundSetting)
 end
 
 ---------------------------------------------------------------------------

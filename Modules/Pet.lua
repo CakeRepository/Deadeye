@@ -17,6 +17,10 @@
 -- cannot be shown, moved or reconfigured in combat, so those changes wait for
 -- the end of the fight. It is kept apart from the panel (anchored to the screen,
 -- not to the panel) so the panel itself stays free to change in combat.
+--
+-- While your pet is dead, a Revive Pet button takes the feed button's place. A
+-- state driver ("[@pet,dead] show; hide") shows and hides it, so it comes up
+-- the moment your pet dies, even in combat.
 local _, ns = ...
 local L = ns.L
 
@@ -30,6 +34,7 @@ local Pet = ns:NewModule("Pet", {
 	showLoyalty = true,
 	feedAlert = true,
 	feedButton = true,
+	reviveButton = true, -- Revive Pet button in the feed button's place while the pet is dead
 	skipFoods = {}, -- [itemID] = name: food the feed button leaves alone (right-click on it)
 	buyFood = true, -- vendors: buy food your pet eats, close to its level
 	growlReminder = true, -- Growl's autocast: off in dungeons and raids, on outside
@@ -56,6 +61,9 @@ local BACKGROUND_COLOR = { 0, 0, 0, 0.55 }
 local HUNGRY_COLOR = { 1, 0.82, 0, 0.9 } -- behind the feed button while the pet isn't happy
 local PULSE_SECONDS = 6
 local FEED_PET_SPELL_ID = 6991
+local REVIVE_PET_SPELL_ID = 982
+local REVIVE_PET_ICON = "Interface\\Icons\\Ability_Hunter_BeastSoothe"
+local DEAD_PET = "[@pet,dead] show; hide" -- the revive button's visibility
 local FEED_PET_ICON = "Interface\\Icons\\Ability_Hunter_BeastTraining"
 local WELL_FED_SPELL_ID = 19705 -- the "Well Fed" buff, for its name in the game's language
 local BAGS = { 0, 1, 2, 3, 4 } -- backpack and the four bag slots
@@ -298,9 +306,10 @@ function Pet:NeedsAttention(status)
 	return status.kind ~= "alive" or (status.happiness ~= nil and status.happiness < HAPPY)
 end
 
-function Pet:Alert(message)
+-- fightStart: one of the alerts a fight starts with (see ns.FightStartSoundOption).
+function Pet:Alert(message, fightStart)
 	ns.Print(message)
-	local sound = ns.Media.Sound(self.db.alertSound)
+	local sound = ns.AlertSound(self.db.alertSound, fightStart)
 	if sound then
 		PlaySound(sound, "Master")
 	end
@@ -311,6 +320,7 @@ function Pet:Alert(message)
 		frame:SetAlpha(alpha)
 		if self.feedButton then
 			self.feedButton:SetAlpha(alpha) -- unlike moving it, allowed in combat
+			self.reviveButton:SetAlpha(alpha)
 		end
 		if remaining <= 0 then
 			frame:SetScript("OnUpdate", nil)
@@ -404,20 +414,40 @@ function Pet:UpdateFeedButton(status)
 	button:SetAttribute("target-bag", food and food.bag)
 	button:SetAttribute("target-slot", food and food.slot)
 	local db = self.db
-	if not (db.feedButton and alive) then
-		button:Hide()
-		return
-	end
 	-- Beside the panel, on the side away from the middle of the screen (where the
 	-- Auto Shot bar is). Like the panel, it is anchored to the screen's center.
+	-- The revive button shares the spot.
 	local size, scale = self.frame:GetHeight(), db.scale
 	local side = db.position.x > 0 and 1 or -1
-	button:SetScale(scale)
-	button:SetSize(size, size)
-	button:ClearAllPoints()
-	button:SetPoint("CENTER", UIParent, "CENTER",
-		db.position.x / scale + side * ((db.width + size) / 2 + FEED_BUTTON_GAP), db.position.y / scale)
-	button:Show()
+	for _, spot in ipairs({ button, self.reviveButton }) do
+		spot:SetScale(scale)
+		spot:SetSize(size, size)
+		spot:ClearAllPoints()
+		spot:SetPoint("CENTER", UIParent, "CENTER",
+			db.position.x / scale + side * ((db.width + size) / 2 + FEED_BUTTON_GAP), db.position.y / scale)
+	end
+	self:UpdateReviveButton()
+	button:SetShown(db.feedButton and alive)
+	local commands = ns.modules.PetCommands
+	if commands and commands.enabled then
+		commands:ApplyLayout() -- the pet commands' remote covers the panel
+	end
+end
+
+-- The revive button shows itself while the pet is dead (its state driver), as
+-- long as it's turned on. Out of combat only, like any change to it.
+function Pet:UpdateReviveButton()
+	local button, db = self.reviveButton, self.db
+	local wanted = db.enabled and db.reviveButton
+	if wanted ~= button.driven then
+		button.driven = wanted
+		if wanted then
+			RegisterStateDriver(button, "visibility", DEAD_PET)
+		else
+			UnregisterStateDriver(button, "visibility")
+			button:Hide()
+		end
+	end
 end
 
 -- Scans the bags for the feed button's food. Every arrow fired changes your
@@ -607,6 +637,36 @@ function Pet:BuildFeedButton()
 	end)
 	button:Hide()
 	self.feedButton = button
+
+	-- In the same spot while the pet is dead: one click casts Revive Pet.
+	local revive = CreateFrame("Button", "DeadeyeReviveButton", UIParent, "SecureActionButtonTemplate")
+	revive:SetFrameStrata("MEDIUM")
+	revive:SetFrameLevel(button:GetFrameLevel() + 5)
+	revive:RegisterForClicks("LeftButtonUp", "LeftButtonDown")
+	revive:SetAttribute("type", "spell")
+	revive:SetAttribute("spell", REVIVE_PET_SPELL_ID)
+	revive.background = revive:CreateTexture(nil, "BACKGROUND")
+	revive.background:SetAllPoints()
+	revive.background:SetColorTexture(ALERT_COLOR[1], ALERT_COLOR[2], ALERT_COLOR[3], 0.9)
+	revive.icon = revive:CreateTexture(nil, "ARTWORK")
+	revive.icon:SetPoint("TOPLEFT", 2, -2)
+	revive.icon:SetPoint("BOTTOMRIGHT", -2, 2)
+	revive.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+	revive.icon:SetTexture(C_Spell.GetSpellTexture(REVIVE_PET_SPELL_ID) or REVIVE_PET_ICON)
+	local reviveHighlight = revive:CreateTexture(nil, "HIGHLIGHT")
+	reviveHighlight:SetPoint("TOPLEFT", 2, -2)
+	reviveHighlight:SetPoint("BOTTOMRIGHT", -2, 2)
+	reviveHighlight:SetColorTexture(1, 1, 1, 0.2)
+	revive:SetScript("OnEnter", function(owner)
+		GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+		GameTooltip:SetText(L["Revive %s"]:format(PetName(L["your pet"])))
+		GameTooltip:Show()
+	end)
+	revive:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+	revive:Hide()
+	self.reviveButton = revive
 end
 
 function Pet:ApplyLayout()
@@ -684,9 +744,10 @@ function Pet:GetOptionSections()
 		},
 		{
 			name = L["Pet: feeding"],
-			keys = { "feedButton", "feedAlert", "skipFoods", "buyFood", "foodStacks" },
+			keys = { "feedButton", "reviveButton", "feedAlert", "skipFoods", "buyFood", "foodStacks" },
 			controls = {
 				{ type = "toggle", label = L["Feed button next to the panel"], key = "feedButton", slash = "feedbutton" },
+				{ type = "toggle", label = L["Revive button while my pet is dead"], key = "reviveButton", slash = "revivebutton" },
 				{ type = "toggle", label = L["Tell me when my pet needs feeding"], key = "feedAlert", slash = "feedalert" },
 				{ type = "button", label = L["Use skipped food again"], slash = "unskip", func = function()
 					self:UnskipFoods()
@@ -701,6 +762,7 @@ function Pet:GetOptionSections()
 			keys = { "missingAlert", "growlReminder", "alertSound", "font", "fontSize", "fontOutline" },
 			controls = {
 				{ type = "toggle", label = L["Warn me in combat without my pet"], key = "missingAlert", slash = "missingalert" },
+				ns.FightStartSoundOption(),
 				{ type = "toggle", label = L["Growl reminders for dungeons and raids"], key = "growlReminder", slash = "growl" },
 				{ type = "select", label = L["Alert sound"], key = "alertSound", values = ns.Media.Sounds(), slash = "sound" },
 				{ type = "button", label = L["Play the sound"], slash = "playsound", func = function()
@@ -779,9 +841,9 @@ end
 function Pet:PLAYER_REGEN_DISABLED()
 	if self.db.enabled and self.db.missingAlert and self.db.hadPet then
 		if not UnitExists("pet") then
-			self:Alert(L["You're in combat without your pet."])
+			self:Alert(L["You're in combat without your pet."], true)
 		elseif UnitIsDead("pet") then
-			self:Alert(L["Your pet is dead. Cast Revive Pet when you can."])
+			self:Alert(L["Your pet is dead. Cast Revive Pet when you can."], true)
 		end
 	end
 	self:Refresh()

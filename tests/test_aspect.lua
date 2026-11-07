@@ -127,6 +127,31 @@ test("aspect: attack problems still come first", function()
 	H.Equal(Text(Range), "Face your target", "turning around comes first")
 end)
 
+test("fight-start alerts: one switch silences their sound, keeping their text and other sounds", function()
+	local W = Setup()
+	W.Slash("pet missingalert on")
+	Fight(W)
+	H.True(W.Printed("You're fighting without an aspect."), "the alert")
+	H.Equal(#W.sounds, 1, "with its sound")
+	W.inCombat = false
+	W.Fire("PLAYER_REGEN_ENABLED")
+	W.Slash("aspect fightsound off")
+	H.False(W.ns.db.fightStartSound, "one setting")
+	W.printed = {}
+	Fight(W)
+	H.True(W.Printed("You're fighting without an aspect."), "the alert's text stays")
+	H.Equal(#W.sounds, 1, "without a sound")
+	W.inCombat = false
+	W.Fire("PLAYER_REGEN_ENABLED")
+	-- The same switch on the ammo and pet pages; other alerts keep their sound.
+	W.Slash("ammo fightsound on")
+	H.True(W.ns.db.fightStartSound, "the ammo page's switch is the same one")
+	W.Slash("pet fightsound off")
+	H.False(W.ns.db.fightStartSound, "and the pet page's")
+	W.ns.modules.Pet:Alert("Grrl is content. Time to feed it.")
+	H.Equal(#W.sounds, 2, "another alert still plays its sound")
+end)
+
 test("aspect: the reminder and each warning can be turned off", function()
 	local W, Aspect, Range = Setup()
 	W.CastAspect(CHEETAH)

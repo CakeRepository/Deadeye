@@ -1,0 +1,8 @@
+<Bindings>
+	<!-- The pet commands (Modules\PetCommands.lua), under Key Bindings > AddOns. Each one clicks the keys button with its own mouse button. -->
+	<Binding name="CLICK DeadeyePetKeys:LeftButton" header="DEADEYE" category="ADDONS"/>
+	<Binding name="CLICK DeadeyePetKeys:Button5" category="ADDONS"/>
+	<Binding name="CLICK DeadeyePetKeys:RightButton" category="ADDONS"/>
+	<Binding name="CLICK DeadeyePetKeys:Button4" category="ADDONS"/>
+	<Binding name="CLICK DeadeyePetKeys:MiddleButton" category="ADDONS"/>
+</Bindings>

@@ -26,7 +26,7 @@ if failed == 0 then
 	-- DEADEYE_SKIP_LOCALES=1 leaves out the translation checks while new texts
 	-- are still untranslated.
 	local files = { "test_autoshot.lua", "test_options.lua", "test_hunter_tools.lua", "test_ammo.lua",
-		"test_aspect.lua", "test_clipping.lua", "test_tranq.lua" }
+		"test_aspect.lua", "test_clipping.lua", "test_tranq.lua", "test_petcommands.lua" }
 	if not (os and os.getenv and os.getenv("DEADEYE_SKIP_LOCALES")) then
 		files[#files + 1] = "test_locales.lua"
 	end

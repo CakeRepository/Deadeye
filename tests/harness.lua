@@ -36,6 +36,7 @@ local SCRIPTS = {
 	OnHide = true, OnEnter = true, OnLeave = true, OnMouseDown = true, OnMouseUp = true,
 	OnClick = true, OnValueChanged = true, OnEnterPressed = true, OnEscapePressed = true,
 	OnEditFocusLost = true, OnEditFocusGained = true, OnTextChanged = true, OnMouseWheel = true,
+	PreClick = true, PostClick = true, OnAttributeChanged = true,
 }
 -- Font objects confirmed in the Forever client's Blizzard_Fonts_Shared.
 local FONTS = {
@@ -46,6 +47,7 @@ local FONTS = {
 }
 -- Templates confirmed in the Forever client's UI source, by frame type.
 local TEMPLATES = {
+	Frame = { SecureHandlerStateTemplate = true },
 	CheckButton = { MinimalCheckboxTemplate = true, UICheckButtonTemplate = true },
 	Slider = { UISliderTemplate = true },
 	EditBox = { InputBoxTemplate = true },
@@ -64,6 +66,12 @@ local FRAME_TYPES = {
 -- Globals the addon is expected to create, or to read before they exist.
 local ADDON_GLOBALS = {
 	DeadeyeDB = true,
+	BINDING_HEADER_DEADEYE = true,
+	["BINDING_NAME_CLICK DeadeyePetKeys:LeftButton"] = true,
+	["BINDING_NAME_CLICK DeadeyePetKeys:Button5"] = true,
+	["BINDING_NAME_CLICK DeadeyePetKeys:RightButton"] = true,
+	["BINDING_NAME_CLICK DeadeyePetKeys:Button4"] = true,
+	["BINDING_NAME_CLICK DeadeyePetKeys:MiddleButton"] = true,
 	SLASH_DEADEYE1 = true,
 	SLASH_DEADEYE2 = true,
 	Deadeye_OnAddonCompartmentClick = true,
@@ -78,7 +86,7 @@ H.addonGlobals, H.optionalGlobals = ADDON_GLOBALS, OPTIONAL_GLOBALS
 -- function(W, env, M) that adds to a new world (M: check, NewFrame, isNumber,
 -- isSecret, options, H). They wrap the functions defined here for the cases
 -- they handle and pass every other call on to the function they wrapped.
-local MOCK_FILES = { "ammo", "aspect", "clipping", "tranq" }
+local MOCK_FILES = { "ammo", "aspect", "clipping", "tranq", "petcommands" }
 local HERE = debug.getinfo(1, "S").source:match("^@(.*)[/\]harness%.lua$") or "tests"
 local mockChunks = {}
 local function MockFile(name)
@@ -444,7 +452,7 @@ end
 function Frame:SetAttribute(name, value)
 	check(type(name) == "string", "SetAttribute: name expected")
 	if not Blocked(self, "SetAttribute") then
-		self.attributes[name] = value
+		self.world.SetAttributeSecurely(self, name, value)
 	end
 end
 
@@ -642,9 +650,11 @@ function Button:SetMotionScriptsWhileDisabled(enabled)
 	self.motionScriptsWhileDisabled = enabled
 end
 
-function Button:Click(mouseButton)
-	if self:IsEnabled() and self.scripts.OnClick then
-		self.scripts.OnClick(self, mouseButton or "LeftButton", false)
+-- A click from addon code, or from a macro's /click: neither a key press nor
+-- a secure mouse click, whatever the button registered for.
+function Button:Click(mouseButton, down)
+	if self:IsEnabled() then
+		self.world.FireClick(self, mouseButton or "LeftButton", down == true)
 	end
 end
 
@@ -886,6 +896,8 @@ function H.NewWorld(options)
 		items = {}, -- [itemID] = { name =, level =, diet =, icon =, buff =, uncached = } (ITEMS)
 		protectedFrames = {},
 		casts = {}, -- spells cast by secure buttons
+		macros = {}, -- macro text run by secure buttons
+		bindings = {}, -- [binding command] = key
 		used = {}, -- { bag =, slot = } items a secure button used as a spell's target
 	}
 	for itemID, item in pairs(ITEMS) do
@@ -915,22 +927,38 @@ function H.NewWorld(options)
 
 	-- What SecureActionButton_OnClick (SecureTemplates.lua) does for type
 	-- "spell": cast the spell, then, if it waits for an item target, use the
-	-- item at target-bag / target-slot. It acts on the press or on the release,
-	-- whichever the ActionButtonUseKeyDown setting picks, and ignores the other.
-	local SUFFIXES = { LeftButton = "1", RightButton = "2", MiddleButton = "3" }
-	local function SecureClick(button, mouseButton, down)
-		if down ~= (W.cvars.ActionButtonUseKeyDown == "1") then
+	-- item at target-bag / target-slot; for type "macro", run its macro text.
+	-- An addon's button gets no isKeyPress / isSecureAction from the client
+	-- (SecureTemplates.xml says so; Blizzard's own action bars do), so a mouse
+	-- click, a key press and a macro's /click alike act on the press or on the
+	-- release, as the button's useOnKeyDown attribute or else the
+	-- ActionButtonUseKeyDown setting picks; the other one does nothing. Seen in
+	-- game: a button registered for releases only never acted with the setting
+	-- on. Attributes are looked up with the modifiers held and the mouse
+	-- button's suffix, as SecureButton_GetModifiedAttribute does.
+	local SUFFIXES = { LeftButton = "1", RightButton = "2", MiddleButton = "3", Button4 = "4", Button5 = "5" }
+	local function SecureClick(button, mouseButton, down, isKeyPress, isSecureAction)
+		local useOnKeyDown = button:GetAttribute("useOnKeyDown")
+		if useOnKeyDown == nil then
+			useOnKeyDown = W.cvars.ActionButtonUseKeyDown == "1"
+		end
+		useOnKeyDown = not (not isKeyPress and isSecureAction) and useOnKeyDown == true
+		if (down == true) ~= useOnKeyDown then
 			return
 		end
 		local suffix = SUFFIXES[mouseButton] or ""
+		local prefix = W.shiftDown and "shift-" or ""
 		local function Attribute(name)
-			local value = button:GetAttribute(name .. suffix)
-			if value == nil then
-				value = button:GetAttribute(name)
+			for _, key in ipairs({ prefix .. name .. suffix, "*" .. name .. suffix, prefix .. name .. "*", "*" .. name .. "*", name }) do
+				local value = button:GetAttribute(key)
+				if value ~= nil then
+					return value
+				end
 			end
-			return value
 		end
-		if Attribute("type") == "spell" then
+		if Attribute("type") == "macro" then
+			W.macros[#W.macros + 1] = Attribute("macrotext")
+		elseif Attribute("type") == "spell" then
 			local spell = Attribute("spell")
 			W.casts[#W.casts + 1] = spell
 			local slot = Attribute("target-slot")
@@ -940,21 +968,172 @@ function H.NewWorld(options)
 		end
 	end
 
+	-- Templates can be listed together ("A, B"); Frame templates suit any frame type.
 	env.CreateFrame = function(frameType, name, parent, template)
 		check(FRAME_TYPES[frameType], "CreateFrame: unsupported type " .. tostring(frameType))
-		check(template == nil or (TEMPLATES[frameType] and TEMPLATES[frameType][template]),
-			"CreateFrame: unknown template " .. tostring(template) .. " for " .. frameType)
 		check(name == nil or type(name) == "string", "CreateFrame: name must be a string")
+		local templates = {}
+		for each in tostring(template or ""):gmatch("[^,%s]+") do
+			check((TEMPLATES[frameType] and TEMPLATES[frameType][each]) or TEMPLATES.Frame[each],
+				"CreateFrame: unknown template " .. each .. " for " .. frameType)
+			templates[each] = true
+		end
 		local frame = NewFrame(frameType, name, parent)
-		if template == "SecureActionButtonTemplate" then
+		if templates.SecureActionButtonTemplate or templates.SecureHandlerStateTemplate then
 			if W.inCombat then
-				W.blocked[#W.blocked + 1] = "CreateFrame of a secure button"
+				W.blocked[#W.blocked + 1] = "CreateFrame of a secure frame"
 			end
 			frame.protected = true
 			W.protectedFrames[#W.protectedFrames + 1] = frame
+		end
+		if templates.SecureActionButtonTemplate then
 			frame.scripts.OnClick = SecureClick
 		end
+		frame.stateHandler = templates.SecureHandlerStateTemplate -- runs its _onstate-<state> snippets
 		return frame
+	end
+
+	-- Restricted code (SecureHandlers.lua, RestrictedEnvironment.lua): snippets
+	-- that run in combat too, on frame handles that read and set attributes and
+	-- show or hide frames. A header's snippets share their globals, and see the
+	-- header as "control". The word "function" may not appear in a snippet.
+	local handles = {}
+	local HANDLE = {}
+	HANDLE.__index = HANDLE
+	local function Handle(frame)
+		local handle = handles[frame]
+		if not handle then
+			handle = setmetatable({}, HANDLE)
+			handles[frame], handles[handle] = handle, frame
+		end
+		return handle
+	end
+	function HANDLE:GetAttribute(name)
+		if type(name) ~= "string" or name:match("^_") then
+			return nil
+		end
+		return handles[self].attributes[name]
+	end
+	function HANDLE:SetAttribute(name, value)
+		check(type(name) == "string" and not name:match("^_"), "restricted SetAttribute: invalid name " .. tostring(name))
+		local kind = type(value)
+		check(kind == "string" or kind == "number" or kind == "boolean" or kind == "nil", "restricted SetAttribute: invalid value")
+		W.SetAttributeSecurely(handles[self], name, value)
+	end
+	function HANDLE:Show()
+		handles[self].shown = true
+	end
+	function HANDLE:Hide()
+		handles[self].shown = false
+	end
+	function HANDLE:IsShown()
+		return handles[self].shown
+	end
+	local function CompileSnippet(signature, body)
+		check(type(body) == "string", "restricted code: snippet expected")
+		check(not body:find("function", 1, true), "restricted code: the function keyword is not permitted")
+		return assert(loadstring("return function(" .. signature .. ") " .. body .. "\nend", "snippet"))
+	end
+	local function Pack(...)
+		return { n = select("#", ...), ... }
+	end
+	local restrictedEnvs = {}
+	function W.RunRestricted(header, frame, signature, body, ...)
+		local chunk = CompileSnippet(signature, body)
+		local globals = restrictedEnvs[header]
+		if not globals then
+			globals = {
+				math = math, string = string, select = select, tonumber = tonumber, tostring = tostring, type = type,
+				-- Seen in game (Forever 1.60.1): a click snippet stopped at its
+				-- SecureCmdOptionParse call. Snippets read a state driver's
+				-- state-<name> attribute instead.
+				SecureCmdOptionParse = function()
+					error("SecureCmdOptionParse stops click snippets in game: use a state driver", 2)
+				end,
+				IsShiftKeyDown = function()
+					return W.shiftDown == true
+				end,
+				UnitExists = function(unit)
+					return env.UnitExists(unit)
+				end,
+			}
+			restrictedEnvs[header] = globals
+		end
+		setfenv(chunk, globals)
+		local previous = globals.control
+		globals.control = Handle(header)
+		local results = Pack(pcall(chunk(), Handle(frame), ...))
+		globals.control = previous
+		if not results[1] then
+			error(results[2], 0)
+		end
+		return unpack(results, 2, results.n)
+	end
+	-- Sets an attribute as the client does; secure code (restricted snippets,
+	-- state drivers) may do it in combat too.
+	function W.SetAttributeSecurely(frame, name, value)
+		frame.attributes[name] = value
+		local state = frame.stateHandler and name:match("^state%-(.+)$")
+		if state and frame.attributes["_onstate-" .. state] then
+			W.RunRestricted(frame, frame, "self,stateid,newstate", frame.attributes["_onstate-" .. state], state, value)
+		end
+		if frame.scripts.OnAttributeChanged then
+			frame.scripts.OnAttributeChanged(frame, name, value)
+		end
+	end
+	env.SecureHandlerWrapScript = function(frame, script, header, preBody, postBody)
+		check(type(frame) == "table" and IsProtected(frame), "SecureHandlerWrapScript: a protected frame expected")
+		check(script == "OnClick", "SecureHandlerWrapScript: only OnClick is mocked")
+		check(type(header) == "table" and header.stateHandler, "SecureHandlerWrapScript: header must be a secure handler")
+		CompileSnippet("self,button,down", preBody)
+		if postBody ~= nil then
+			CompileSnippet("self,message,button,down", postBody)
+		end
+		if W.inCombat then
+			W.blocked[#W.blocked + 1] = "SecureHandlerWrapScript"
+			return
+		end
+		frame.wrap = { header = header, pre = preBody, post = postBody }
+	end
+	-- One click event: PreClick, OnClick (through the snippets of a wrapped
+	-- button: false drops the click, a button name replaces the mouse button)
+	-- and PostClick. isKeyPress and isSecureAction are what the client passes on.
+	function W.FireClick(frame, mouseButton, down, isKeyPress, isSecureAction)
+		local scripts = frame.scripts
+		if scripts.PreClick then
+			scripts.PreClick(frame, mouseButton, down)
+		end
+		if scripts.OnClick then
+			local wrap, newButton, message = frame.wrap, nil, nil
+			if wrap then
+				newButton, message = W.RunRestricted(wrap.header, frame, "self,button,down", wrap.pre, mouseButton, down)
+			end
+			if newButton ~= false then
+				if newButton ~= nil then
+					mouseButton = tostring(newButton)
+				end
+				scripts.OnClick(frame, mouseButton, down, isKeyPress, isSecureAction)
+				if wrap and wrap.post and message ~= nil then
+					W.RunRestricted(wrap.header, frame, "self,message,button,down", wrap.post, message, mouseButton, down)
+				end
+			end
+		end
+		if scripts.PostClick then
+			scripts.PostClick(frame, mouseButton, down)
+		end
+	end
+	env.hooksecurefunc = function(first, second, third)
+		local target, name, hook = env, first, second
+		if type(first) == "table" then
+			target, name, hook = first, second, third
+		end
+		local original = rawget(target, name)
+		check(type(original) == "function" and type(hook) == "function", "hooksecurefunc: no function " .. tostring(name))
+		rawset(target, name, function(...)
+			local results = Pack(original(...))
+			hook(...)
+			return unpack(results, 1, results.n)
+		end)
 	end
 	env.UIParent = NewFrame("Frame", nil, nil)
 	env.UIParent.isUIParent = true
@@ -1042,9 +1221,10 @@ function H.NewWorld(options)
 	W.spellNames = {
 		[75] = "Auto Shot", [2973] = "Raptor Strike", [2974] = "Wing Clip", [1495] = "Mongoose Bite",
 		[1130] = "Hunter's Mark", [14325] = "Hunter's Mark", [3044] = "Arcane Shot", [6603] = "Auto Attack",
-		[6991] = "Feed Pet", [19705] = "Well Fed",
+		[6991] = "Feed Pet", [982] = "Revive Pet", [883] = "Call Pet", [19705] = "Well Fed",
+		[7371] = "Charge", [23099] = "Dash", [23145] = "Dive", -- pet openers
 	}
-	W.spellTextures = { [75] = 132222, [6991] = 132165 }
+	W.spellTextures = { [75] = 132222, [6991] = 132165, [982] = 132163, [7371] = 132337, [23099] = 132242, [23145] = 132190 }
 	local MELEE = { ["Raptor Strike"] = true, ["Wing Clip"] = true, ["Mongoose Bite"] = true, ["Auto Attack"] = true }
 	env.C_Spell = {
 		IsSpellInRange = function(spell, unit)
@@ -1256,15 +1436,135 @@ function H.NewWorld(options)
 			return false
 		end,
 	}
+	-- Secure state drivers (Blizzard's SecureStateDriver.lua): from macro
+	-- conditions, a "visibility" driver shows or hides a frame, and any other
+	-- driver sets the frame's state-<state> attribute (which runs its
+	-- _onstate-<state> snippet), in combat too. Only the conditions the addon
+	-- uses are understood: @unit with dead / exists / harm (and their "no"
+	-- forms). Drivers are re-checked after every event; the client does it a
+	-- few times a second.
+	W.drivers = {} -- [frame] = visibility conditions
+	W.stateDrivers = {} -- [frame] = { [state] = conditions }
+	W.petTarget = false -- your pet has a target: it's fighting
+	local function UnitCondition(unit, condition)
+		if condition == "pet" then -- [pet] / [nopet]: you have a pet out
+			return W.pet ~= nil
+		elseif unit == "pet" and condition == "dead" then
+			return W.pet ~= nil and W.pet.dead == true
+		elseif unit == "pet" and condition == "exists" then
+			return W.pet ~= nil
+		elseif unit == "pettarget" and condition == "exists" then
+			return W.pet ~= nil and W.petTarget == true
+		elseif unit == "target" and condition == "exists" then
+			return W.hasTarget == true
+		elseif unit == "target" and condition == "harm" then
+			return W.hasTarget == true and W.targetFriendly ~= true
+		elseif unit == "target" and condition == "dead" then
+			return W.hasTarget == true and W.targetDead == true
+		end
+		check(false, "macro condition: unsupported condition " .. condition .. " on " .. unit)
+	end
+	-- One [group] of conditions, all of which must hold ([] always does).
+	local function GroupHolds(conditions)
+		local unit, ok = "target", true
+		for condition in conditions:gmatch("[^,]+") do
+			condition = condition:match("^%s*(.-)%s*$")
+			if condition:sub(1, 1) == "@" then
+				unit = condition:sub(2)
+			elseif condition:sub(1, 2) == "no" then
+				ok = ok and not UnitCondition(unit, condition:sub(3))
+			else
+				ok = ok and UnitCondition(unit, condition)
+			end
+		end
+		return ok
+	end
+	-- A clause matches when any of its [groups] holds, or when it has none.
+	local function OptionParse(values)
+		for clause in values:gmatch("[^;]+") do
+			local rest, groups = clause:match("^%s*(.-)%s*$"), {}
+			while rest:sub(1, 1) == "[" do
+				local group, after = rest:match("^%[(.-)%](.*)$")
+				groups[#groups + 1] = group
+				rest = after:match("^%s*(.-)$")
+			end
+			if #groups == 0 then
+				return rest
+			end
+			for _, group in ipairs(groups) do
+				if GroupHolds(group) then
+					return rest
+				end
+			end
+		end
+	end
+	W.OptionParse = OptionParse
+	function W.UpdateDrivers()
+		for frame, values in pairs(W.drivers) do
+			local value = OptionParse(values)
+			if value == "show" then
+				frame.shown = true
+			elseif value == "hide" then
+				frame.shown = false
+			end
+		end
+		for frame, states in pairs(W.stateDrivers) do
+			for state, values in pairs(states) do
+				local value = OptionParse(values)
+				if value ~= nil then
+					if value == "nil" then
+						value = nil
+					else
+						value = tonumber(value) or value
+					end
+					if value ~= frame.attributes["state-" .. state] then
+						W.SetAttributeSecurely(frame, "state-" .. state, value)
+					end
+				end
+			end
+		end
+	end
+	env.RegisterStateDriver = function(frame, state, values)
+		check(type(state) == "string" and type(values) == "string", "RegisterStateDriver: state and conditions expected")
+		if W.inCombat and IsProtected(frame) then
+			W.blocked[#W.blocked + 1] = "RegisterStateDriver"
+			return
+		end
+		if state == "visibility" then
+			W.drivers[frame] = values
+		else
+			W.stateDrivers[frame] = W.stateDrivers[frame] or {}
+			W.stateDrivers[frame][state] = values
+		end
+		W.UpdateDrivers()
+	end
+	env.UnregisterStateDriver = function(frame, state)
+		check(type(state) == "string", "UnregisterStateDriver: state expected")
+		if W.inCombat and IsProtected(frame) then
+			W.blocked[#W.blocked + 1] = "UnregisterStateDriver"
+			return
+		end
+		if state == "visibility" then
+			W.drivers[frame] = nil
+		elseif W.stateDrivers[frame] then
+			W.stateDrivers[frame][state] = nil
+		end
+	end
 	-- The pet bar: W.petActions[slot] = { name =, autoCastEnabled = }; W.instanceType
 	-- is "none" outside dungeons and raids ("party", "raid" inside).
+	-- Stances are tokens: { name = "PET_MODE_PASSIVE", token = true, active = true }.
 	W.petActions, W.instanceType = {}, "none"
 	env.GetPetActionInfo = function(slot)
 		check(isNumber(slot), "GetPetActionInfo: slot expected")
 		local action = W.pet and W.petActions[slot]
 		if action then
-			return action.name, 136224, false, false, true, action.autoCastEnabled == true, action.spellID
+			return action.name, action.texture or 136224, action.token == true, action.active == true, true,
+				action.autoCastEnabled == true, action.spellID, action.checksRange == true, action.inRange == true
 		end
+	end
+	env.GetBindingKey = function(command)
+		check(type(command) == "string", "GetBindingKey: command expected")
+		return W.bindings[command]
 	end
 	env.IsInInstance = function()
 		return W.instanceType ~= "none", W.instanceType
@@ -1354,6 +1654,7 @@ function H.NewWorld(options)
 	if options.savedVariables then
 		env.DeadeyeDB = options.savedVariables
 	end
+	env._G = env
 	local M = { check = check, NewFrame = NewFrame, isNumber = isNumber, isSecret = isSecret, options = options, H = H }
 	for _, name in ipairs(MOCK_FILES) do
 		MockFile(name)(W, env, M)
@@ -1388,6 +1689,7 @@ function H.NewWorld(options)
 				end
 			end
 		end
+		W.UpdateDrivers()
 	end
 
 	local function RunTimers()
@@ -1429,7 +1731,7 @@ function H.NewWorld(options)
 	end
 
 	-- A mouse click: the press, then the release, each running OnMouseDown /
-	-- OnMouseUp and, if the button registered that click, OnClick.
+	-- OnMouseUp and, if the button registered that click, the click scripts.
 	function W.Click(frame, mouseButton)
 		mouseButton = mouseButton or "LeftButton"
 		local clicks = frame.clicks or { LeftButtonUp = true } -- a Button's default
@@ -1439,9 +1741,34 @@ function H.NewWorld(options)
 			if script then
 				script(frame, mouseButton)
 			end
-			if frame.scripts.OnClick and (clicks["Any" .. direction] or clicks[mouseButton .. direction]) then
-				frame.scripts.OnClick(frame, mouseButton, down)
+			if clicks["Any" .. direction] or clicks[mouseButton .. direction] then
+				W.FireClick(frame, mouseButton, down)
 			end
+		end
+	end
+
+	-- A key bound to "CLICK <button>:<mouseButton>" (Bindings.xml), pressed and
+	-- released. Hidden buttons take key presses too.
+	function W.Key(frame, mouseButton)
+		mouseButton = mouseButton or "LeftButton"
+		local clicks = frame.clicks or { LeftButtonUp = true }
+		for _, down in ipairs({ true, false }) do
+			local direction = down and "Down" or "Up"
+			if clicks["Any" .. direction] or clicks[mouseButton .. direction] then
+				W.FireClick(frame, mouseButton, down)
+			end
+		end
+	end
+
+	-- A macro of the player's, from their bar. Only /click is understood, as
+	-- SlashCommands.lua runs it: "/click <name> <mouse button> 1" clicks down.
+	function W.RunMacroText(text)
+		for line in text:gmatch("[^\n]+") do
+			local name, mouseButton, down = line:match("^/click%s+(%S+)%s*(%S*)%s*(.-)%s*$")
+			check(name, "RunMacroText: only /click is mocked, not " .. line)
+			local frame = rawget(env, name)
+			check(type(frame) == "table" and frame.Click, "/click: no button named " .. name)
+			frame:Click(mouseButton ~= "" and mouseButton or "LeftButton", down == "1" or down == "true")
 		end
 	end
 
