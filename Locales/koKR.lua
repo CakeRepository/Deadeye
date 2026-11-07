@@ -375,3 +375,6 @@ L["Click the pet panel to send your pet in, opening with Charge (boar), Dash or 
 L["Pet stance macro: %s. With shift: %s. With ctrl: %s."] = "태세 매크로: %s. Shift 누른 채: %s. Ctrl 누른 채: %s."
 L["Click: %s"] = "클릭: %s"
 L["Sound when a fight starts"] = "전투 시작 시 소리"
+L["Swing"] = "근접 공격"
+L["Melee swing"] = "근접 공격"
+L["Melee swing timer in the bar"] = "바에 근접 공격 타이머 표시"

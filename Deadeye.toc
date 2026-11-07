@@ -2,7 +2,7 @@
 ## Title: |cffaad372Deadeye|r
 ## Notes: Hunter toolkit for WoW: Forever: Auto Shot bar, range indicator, ammo counter and restocking, aspect reminder, pet panel and feed button, Tranq Shot callout. Type /deadeye for options.
 ## Author: CakeRepository
-## Version: 0.5.1-beta
+## Version: 0.5.2-beta
 ## X-License: MIT
 ## X-Website: https://github.com/CakeRepository/Deadeye
 ## X-Curse-Project-ID: 1745019

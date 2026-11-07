@@ -5,7 +5,9 @@ A hunter toolkit for **World of Warcraft: Forever** (interface 16001):
 - **Auto Shot bar.** Shows the reload, where you can move freely, and the aim window at the end,
   where you must stand still. It turns red if you move or cast in the aim window, and can play a
   "stop moving" sound. It also shows where a cast-time shot such as Aimed Shot still fits before
-  your next Auto Shot, and how much a cast will delay it.
+  your next Auto Shot, and how much a cast will delay it. While you swing in melee, your swing
+  timer gets a lane of its own in the bar: the lane for where you fight takes most of it, so you
+  see both at a glance.
 - **Range indicator.** A color strip on top of the bar: melee, dead zone, Auto Shot range, or too
   far. It also warns you when you're not facing your target, have no line of sight, or your
   Hunter's Mark isn't on an enemy you can shoot.
@@ -55,7 +57,7 @@ change immediately.
 | Bar | Texture (LibSharedMedia ones too), background, border, Auto Shot icon, spark, aim-window line and shading, casting between shots |
 | Colors | Reload, aim window, moving or casting, idle, out-of-range opacity, text and warning colors |
 | Text, Wording | Font, size, outline, where the label and timer go, decimals, and the wording for each phase and warning |
-| Timing & Alerts | When the bar shows, aim window length, latency compensation, range dimming, stop-moving sound, delay report |
+| Timing & Alerts | When the bar shows, the melee swing timer, aim window length, latency compensation, range dimming, stop-moving sound, delay report |
 | Range (3 pages) | On or off, when it shows, on the bar or anywhere, strip or text, size, Hunter's Mark reminder, colors, wording and font |
 | Ammo | Counter on or off, always or only when low, beside the bar or anywhere, the low mark, warnings, swapping ammo, the restock button, restocking by itself and its spending limit, better ammo, stacks to carry without a quiver |
 | Aspect | The aspect reminder and each of its warnings, the alert at the start of a fight, sound and color |

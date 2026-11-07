@@ -15,6 +15,9 @@
 --    lists or your last real cast of it. While you cast, UnitCastingInfo says
 --    where the cast ends. Forever's API docs keep both readable for your own
 --    casts, except for spells flagged as always secret.
+--  * Melee swings fire PLAYER_SWING too (Enum.PlayerSwingType.MainHand). While
+--    you swing, the bar splits in two lanes, Auto Shot's and your swing's; the
+--    one for where you fight (the range strip's checks) takes most of it.
 --  * The combat log is closed to addons, so nothing here depends on it.
 local _, ns = ...
 local L = ns.L
@@ -54,12 +57,14 @@ local AutoShot = ns:NewModule("AutoShot", {
 		facing = L["Face your target"],
 		lineOfSight = L["No line of sight"],
 		idle = L["Auto Shot"],
+		swing = L["Swing"],
 	},
 	colors = {
 		reload = { 0.95, 0.60, 0.15 },
 		aim = { 0.25, 0.85, 0.30 },
 		blocked = { 0.90, 0.20, 0.20 },
 		idle = { 0.45, 0.45, 0.45 },
+		swing = { 0.70, 0.45, 1 },
 		text = { 1, 1, 1 },
 		outOfRangeText = { 1, 0.35, 0.35 },
 		safe = { 0.35, 0.75, 1, 0.5 }, -- the safe-to-cast window (lines are drawn solid)
@@ -73,12 +78,16 @@ local AutoShot = ns:NewModule("AutoShot", {
 	sound = "NONE", -- alert when the aim window starts (see Media.lua)
 	soundOnlyMoving = true, -- ...but only once you are moving in it
 	reportDelays = false, -- print how much Auto Shot time was lost after each fight
+	swingTimer = true, -- your melee swing in a lane of its own while you swing
 })
 AutoShot.title = L["Auto Shot bar"]
 
 local AUTO_SHOT_SPELL_ID = 75
 local AUTO_SHOT_ICON = "Interface\\Icons\\Ability_Whirlwind"
 local RANGED_SWING = Enum and Enum.PlayerSwingType and Enum.PlayerSwingType.Ranged or 2
+local MELEE_SWING = Enum and Enum.PlayerSwingType and Enum.PlayerSwingType.MainHand or 0
+local MAIN_LANE = 0.7 -- with the swing lane showing, the lane for where you fight takes this much
+local TEST_SWING_SPEED = 2.6
 local RETRY_INTERVAL = 0.5 -- the client retries a blocked Auto Shot about this often
 local SAME_SHOT_WINDOW = 0.25 -- PLAYER_SWING and UNIT_SPELLCAST_SUCCEEDED report the same shot
 local MAX_LATENCY = 0.4
@@ -209,6 +218,10 @@ local state = {
 	preview = false, -- the options window is open
 	fight = NewFight(), -- Auto Shot delays this fight
 	lastFight = nil,
+	swingStart = nil, -- GetTime() of your last melee swing (main hand)
+	swingDuration = nil, -- its swing speed: when the next one is due
+	swingFake = false, -- a swing made up by test mode or the options preview
+	zone = nil, -- where you are, from the range strip's checks (Range:Evaluate)
 }
 
 ---------------------------------------------------------------------------
@@ -283,6 +296,8 @@ local function CheckRange(now)
 		end
 	end
 	state.inRange = inRange
+	local range = ns.modules.Range
+	state.zone = range and range.enabled and range:Evaluate() or nil
 end
 
 local function StartCycle(start, duration, synthetic)
@@ -313,6 +328,27 @@ local function AdvanceSimulation(now)
 		StartCycle(now, state.speed or TEST_SPEED)
 		state.fake = true
 	end
+end
+
+-- Your melee swing counts while one is due, and for one more swing's time
+-- after: a swing can wait while you step back into reach.
+local function SwingActive(now)
+	return state.swingStart ~= nil and now - state.swingStart < state.swingDuration * 2
+end
+
+local function AdvanceSwingSimulation(now)
+	if AutoShot.db.swingTimer and (not state.swingStart or now >= state.swingStart + state.swingDuration) then
+		state.swingStart, state.swingDuration, state.swingFake = now, TEST_SWING_SPEED, true
+	end
+end
+
+-- The swing lane is the big one while you fight in melee, or while you swing
+-- with Auto Shot off. Out at range, Auto Shot's is.
+local function SwingFirst()
+	if state.zone == "ranged" then
+		return false
+	end
+	return state.zone == "melee" or state.zone == "close" or not (state.shooting or Simulating())
 end
 
 -- Returns phase ("reload", "aim", "blocked" or "idle"), bar fill (0-1),
@@ -480,6 +516,7 @@ function AutoShot:CreateBar()
 		local now = GetTime()
 		if Simulating() then
 			AdvanceSimulation(now)
+			AdvanceSwingSimulation(now)
 		end
 		if self:ShouldShow(now) then
 			self:Render(now)
@@ -497,23 +534,38 @@ function AutoShot:CreateBar()
 		bar.edges[i] = bar:CreateTexture(nil, "BORDER")
 	end
 
+	-- Auto Shot's lane: the whole bar, or most of it or a sliver of it while your
+	-- melee swing has a lane of its own (see ApplyLanes).
+	local shot = CreateFrame("Frame", nil, bar)
+	shot:SetAllPoints()
+	bar.shot = shot
+
 	-- Tinted zone at the end of the bar: the aim window, where you stand still.
-	bar.aimZone = bar:CreateTexture(nil, "ARTWORK")
+	bar.aimZone = shot:CreateTexture(nil, "ARTWORK")
 	-- Also under the fill: the stretch after a shot where you can start the weave
 	-- spell and still finish before the aim window, and the part of the aim
 	-- window the cast in progress runs into (drawn over the aim window's tint).
-	bar.safeZone = bar:CreateTexture(nil, "ARTWORK")
-	bar.clipZone = bar:CreateTexture(nil, "ARTWORK", nil, 1)
+	bar.safeZone = shot:CreateTexture(nil, "ARTWORK")
+	bar.clipZone = shot:CreateTexture(nil, "ARTWORK", nil, 1)
 
 	bar.icon = bar:CreateTexture(nil, "ARTWORK")
 	bar.icon:SetTexture(C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(AUTO_SHOT_SPELL_ID) or AUTO_SHOT_ICON)
 	bar.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
-	local status = CreateFrame("StatusBar", nil, bar)
+	local status = CreateFrame("StatusBar", nil, shot)
 	status:SetAllPoints()
 	status:SetMinMaxValues(0, 1)
 	status:SetValue(0)
 	bar.status = status
+
+	-- Your melee swing, filling as the next one comes due, with a line where it
+	-- meets Auto Shot's lane.
+	local swing = CreateFrame("StatusBar", nil, bar)
+	swing:SetMinMaxValues(0, 1)
+	swing:SetValue(0)
+	swing.edge = swing:CreateTexture(nil, "OVERLAY")
+	swing:Hide()
+	bar.swing = swing
 
 	bar.marker = status:CreateTexture(nil, "OVERLAY")
 	bar.marker:SetColorTexture(1, 1, 1, 0.85)
@@ -620,6 +672,10 @@ function AutoShot:ApplyLayout()
 	status:SetStatusBarTexture(ns.Media.Texture(db.texture))
 	status:SetOrientation(vertical and "VERTICAL" or "HORIZONTAL")
 	status:SetReverseFill(reverse)
+	local swing = bar.swing
+	swing:SetStatusBarTexture(ns.Media.Texture(db.texture))
+	swing:SetOrientation(vertical and "VERTICAL" or "HORIZONTAL")
+	swing:SetReverseFill(reverse)
 
 	-- The aim window sits where the fill ends; the marker is its inner edge. A
 	-- cast's "+0.4" sits just before the marker.
@@ -635,7 +691,6 @@ function AutoShot:ApplyLayout()
 		marker:SetPoint("LEFT", aimZone, inner .. "LEFT")
 		marker:SetPoint("RIGHT", aimZone, inner .. "RIGHT")
 		marker:SetHeight(1)
-		spark:SetSize(db.width, 2)
 		clipText:SetPoint(outer, marker, inner, 0, reverse and 2 or -2)
 	else
 		local outer, inner = reverse and "LEFT" or "RIGHT", reverse and "RIGHT" or "LEFT"
@@ -644,7 +699,6 @@ function AutoShot:ApplyLayout()
 		marker:SetPoint("TOP", aimZone, "TOP" .. inner)
 		marker:SetPoint("BOTTOM", aimZone, "BOTTOM" .. inner)
 		marker:SetWidth(1)
-		spark:SetSize(2, db.height)
 		clipText:SetPoint(outer, marker, inner, reverse and 2 or -2, 0)
 	end
 	local aim = db.colors.aim
@@ -662,6 +716,8 @@ function AutoShot:ApplyLayout()
 	ns.Media.ApplyFont(clipText, db.font, db.fontSize, db.fontOutline)
 	self.clipFormat = "+%." .. math.max(db.timerDecimals, 1) .. "f"
 	self:ApplyIcon()
+	self.lanes = nil -- set them out again for the new size
+	self:ApplyLanes(false)
 
 	ns.Frames.UpdateMover(bar)
 	ns.Frames.ApplyPosition(self, bar)
@@ -674,6 +730,53 @@ function AutoShot:ApplyLayout()
 		ammo:ApplyAnchor() -- the ammo counter can sit beside the bar
 	end
 	self:Refresh()
+end
+
+-- Auto Shot's lane fills the bar on its own. Beside your melee swing's, the lane
+-- for where you fight takes MAIN_LANE of the bar's thickness and the other the
+-- rest: stacked on a wide bar (Auto Shot on top), side by side on a tall one.
+function AutoShot:ApplyLanes(split, swingFirst)
+	local key = split and (swingFirst and "swing" or "shot") or "alone"
+	if key == self.lanes then
+		return
+	end
+	self.lanes = key
+	local db, bar = self.db, self.bar
+	local vertical = db.orientation == "VERTICAL"
+	local thickness = vertical and db.width or db.height
+	local shotSize = thickness
+	if split then
+		shotSize = math.max(1, math.floor(thickness * (swingFirst and 1 - MAIN_LANE or MAIN_LANE) + 0.5))
+	end
+	local shot, swing, edge = bar.shot, bar.swing, bar.swing.edge
+	shot:ClearAllPoints()
+	swing:ClearAllPoints()
+	edge:ClearAllPoints()
+	if vertical then
+		shot:SetPoint("TOPLEFT")
+		shot:SetPoint("BOTTOMLEFT")
+		shot:SetWidth(shotSize)
+		swing:SetPoint("TOPLEFT", shot, "TOPRIGHT")
+		swing:SetPoint("BOTTOMRIGHT")
+		edge:SetPoint("TOPLEFT")
+		edge:SetPoint("BOTTOMLEFT")
+		edge:SetWidth(1)
+		bar.spark:SetSize(shotSize, 2)
+	else
+		shot:SetPoint("TOPLEFT")
+		shot:SetPoint("TOPRIGHT")
+		shot:SetHeight(shotSize)
+		swing:SetPoint("TOPLEFT", shot, "BOTTOMLEFT")
+		swing:SetPoint("BOTTOMRIGHT")
+		edge:SetPoint("TOPLEFT")
+		edge:SetPoint("TOPRIGHT")
+		edge:SetHeight(1)
+		bar.spark:SetSize(2, shotSize)
+	end
+	local border = db.borderColor
+	edge:SetColorTexture(border[1], border[2], border[3], border[4] or 1)
+	self.shotThickness = shotSize
+	swing:SetShown(split)
 end
 
 -- Space above the bar taken by its border, text placed above it and an icon on top.
@@ -712,7 +815,7 @@ function AutoShot:ShouldShow(now)
 	if state.test or state.preview or ns:IsUnlocked() or db.show == "always" then
 		return true
 	end
-	if state.shooting or CycleActive(now) then
+	if state.shooting or CycleActive(now) or (db.swingTimer and SwingActive(now)) then
 		return true
 	end
 	return db.show == "combat" and InCombat()
@@ -735,14 +838,15 @@ end
 -- Centers a texture on the bar offset pixels from where the fill starts, size
 -- pixels long and as thick as the bar.
 function AutoShot:PlaceAlong(texture, offset, size)
-	local db, bar = self.db, self.bar
+	local db, lane = self.db, self.bar.shot
+	local thickness = self.shotThickness or (db.orientation == "VERTICAL" and db.width or db.height)
 	texture:ClearAllPoints()
 	if db.orientation == "VERTICAL" then
-		texture:SetPoint("CENTER", bar, db.reverseFill and "TOP" or "BOTTOM", 0, db.reverseFill and -offset or offset)
-		texture:SetSize(db.width, size)
+		texture:SetPoint("CENTER", lane, db.reverseFill and "TOP" or "BOTTOM", 0, db.reverseFill and -offset or offset)
+		texture:SetSize(thickness, size)
 	else
-		texture:SetPoint("CENTER", bar, db.reverseFill and "RIGHT" or "LEFT", db.reverseFill and -offset or offset, 0)
-		texture:SetSize(size, db.height)
+		texture:SetPoint("CENTER", lane, db.reverseFill and "RIGHT" or "LEFT", db.reverseFill and -offset or offset, 0)
+		texture:SetSize(size, thickness)
 	end
 	texture:Show()
 end
@@ -828,6 +932,17 @@ function AutoShot:Render(now)
 	local db, bar = self.db, self.bar
 	local phase, fill, left, duration = Evaluate(now)
 	local outOfRange = state.inRange == false and phase ~= "idle"
+	local split = db.swingTimer and SwingActive(now)
+	local swingFirst = split and SwingFirst()
+	self:ApplyLanes(split, swingFirst)
+	local swingLeft
+	if split then
+		local elapsed = now - state.swingStart
+		local swingColor = db.colors.swing
+		bar.swing:SetStatusBarColor(swingColor[1], swingColor[2], swingColor[3])
+		bar.swing:SetValue(math.min(elapsed / state.swingDuration, 1))
+		swingLeft = math.max(state.swingDuration - elapsed, 0)
+	end
 
 	local color = db.colors[phase]
 	bar.status:SetStatusBarColor(color[1], color[2], color[3], outOfRange and db.outOfRangeAlpha or 1)
@@ -876,11 +991,16 @@ function AutoShot:Render(now)
 			key = state.castGUID and "casting" or "moving"
 		end
 		local labelColor = (problem or outOfRange) and db.colors.outOfRangeText or textColor
+		if swingFirst then
+			key, labelColor = "swing", textColor
+		end
 		bar.label:SetText(db.labels[key])
 		bar.label:SetTextColor(labelColor[1], labelColor[2], labelColor[3])
 	end
 	if bar.time:IsShown() then
-		if left then
+		if swingFirst then
+			bar.time:SetFormattedText(self.timerFormat, swingLeft)
+		elseif left then
 			bar.time:SetFormattedText(self.timerFormat, left)
 		elseif phase == "idle" and duration then
 			bar.time:SetFormattedText("%.2fs", duration)
@@ -899,6 +1019,9 @@ function AutoShot:Refresh()
 	local now = GetTime()
 	if Simulating() and not CycleActive(now) and not state.fake then
 		AdvanceSimulation(now)
+	end
+	if Simulating() then
+		AdvanceSwingSimulation(now)
 	end
 	if self:ShouldShow(now) then
 		bar:Show()
@@ -922,9 +1045,16 @@ function AutoShot:SetOrientation(orientation)
 	self:ApplyLayout()
 end
 
+local function ClearSwing()
+	state.swingStart, state.swingDuration, state.swingFake = nil, nil, false
+end
+
 local function EndSimulation()
 	if not Simulating() and state.fake then
 		ClearCycle()
+	end
+	if not Simulating() and state.swingFake then
+		ClearSwing()
 	end
 end
 
@@ -1048,13 +1178,15 @@ function AutoShot:GetOptionSections()
 		},
 		{
 			name = L["Colors"],
-			keys = { "colors.reload", "colors.aim", "colors.blocked", "colors.idle", "colors.text", "colors.outOfRangeText", "outOfRangeAlpha" },
+			keys = { "colors.reload", "colors.aim", "colors.blocked", "colors.idle", "colors.swing", "colors.text", "colors.outOfRangeText",
+				"outOfRangeAlpha" },
 			controls = {
 				{ type = "header", label = L["Bar fill"] },
 				{ type = "color", label = L["Reloading (move freely)"], key = "colors.reload", slash = "reloadcolor" },
 				{ type = "color", label = L["Aim window (stand still)"], key = "colors.aim", slash = "aimcolor" },
 				{ type = "color", label = L["Moving or casting in the aim window"], key = "colors.blocked", slash = "blockedcolor" },
 				{ type = "color", label = L["Idle"], key = "colors.idle", slash = "idlecolor" },
+				{ type = "color", label = L["Melee swing"], key = "colors.swing", slash = "swingcolor" },
 				{ type = "range", label = L["Fill opacity when out of range"], key = "outOfRangeAlpha", min = 0.1, max = 1, step = 0.05, slash = "rangealpha" },
 				{ type = "header", label = L["Text"] },
 				{ type = "color", label = L["Text"], key = "colors.text", slash = "textcolor" },
@@ -1086,13 +1218,15 @@ function AutoShot:GetOptionSections()
 				{ type = "input", label = L["Not facing the target"], key = "labels.facing", slash = "facingtext" },
 				{ type = "input", label = L["No line of sight"], key = "labels.lineOfSight", slash = "lostext" },
 				{ type = "input", label = L["Idle"], key = "labels.idle", slash = "idletext" },
+				{ type = "input", label = L["Melee swing"], key = "labels.swing", slash = "swingtext" },
 			},
 		},
 		{
 			name = L["Timing & Alerts"],
-			keys = { "show", "aimTime", "latency", "rangeCheck", "sound", "soundOnlyMoving", "reportDelays" },
+			keys = { "show", "swingTimer", "aimTime", "latency", "rangeCheck", "sound", "soundOnlyMoving", "reportDelays" },
 			controls = {
 				{ type = "select", label = L["Show the bar"], key = "show", values = CHOICES.show, slash = "show" },
+				{ type = "toggle", label = L["Melee swing timer in the bar"], key = "swingTimer", slash = "swing" },
 				{ type = "range", label = L["Aim window (seconds)"], key = "aimTime", min = 0, max = 1.5, step = 0.05, slash = "aim" },
 				{ type = "toggle", label = L["Add my latency to the aim window"], key = "latency", slash = "latency" },
 				{ type = "toggle", label = L["Dim the bar when out of range"], key = "rangeCheck", slash = "rangecheck" },
@@ -1222,8 +1356,25 @@ end
 ---------------------------------------------------------------------------
 -- Events
 ---------------------------------------------------------------------------
+-- A melee swing with your main hand: the next one is due in duration seconds.
+function AutoShot:MeleeSwing(duration)
+	duration = ns.Readable(duration)
+	if not (duration and duration > 0) then
+		return
+	end
+	state.swingStart, state.swingDuration, state.swingFake = GetTime(), duration, false
+	self:Refresh()
+end
+
 function AutoShot:PLAYER_SWING(duration, swingType)
-	if ns.IsSecret(swingType) or swingType ~= RANGED_SWING then
+	if ns.IsSecret(swingType) then
+		return
+	end
+	if swingType == MELEE_SWING then
+		self:MeleeSwing(duration)
+		return
+	end
+	if swingType ~= RANGED_SWING then
 		return
 	end
 	duration = ns.Readable(duration, state.speed)
@@ -1403,6 +1554,7 @@ function AutoShot:PLAYER_ENTERING_WORLD()
 	state.countFrom = nil
 	ClearCast()
 	ClearCycle()
+	ClearSwing()
 	RefreshSpeed()
 	self:Refresh()
 end
@@ -1412,6 +1564,7 @@ function AutoShot:PLAYER_DEAD()
 	state.countFrom = nil
 	ClearCast()
 	ClearCycle()
+	ClearSwing()
 	self:Refresh()
 end
 

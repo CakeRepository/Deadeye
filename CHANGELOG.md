@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.2-beta
+
+- **Melee swing timer in the Auto Shot bar:** while you swing in melee, the bar splits into two
+  lanes, Auto Shot's and your swing's. The lane for where you fight takes 70% of the bar: your
+  swing in melee range, Auto Shot out at range. Both stay in sight, and the bar shows while you
+  swing even with Auto Shot off. A tall bar splits side by side. Turn it off, recolor it or
+  reword it on the **Timing & Alerts**, **Colors** and **Wording** pages.
+
 ## v0.5.1-beta
 
 - **Pet commands:** your pet panel works as a remote for the calls you make in a hurry.
