@@ -14,7 +14,7 @@ first title's words, which keeps old links working.
 **Summary:**
 Auto Shot bar, range strip, ammo counter with automatic restocking, aspect reminder, pet panel with a feed button, and a Tranq Shot callout for WoW: Forever hunters.
 
-The description below was last brought up to date for v0.5.2-beta.
+The description below was last brought up to date for v0.6.0.
 
 **Screenshots** (Media tab), in `docs/screenshots/`, with captions:
 1. `1-auto-shot-bar.png`: The Auto Shot bar with the range strip and the Hunter's Mark reminder
@@ -55,6 +55,11 @@ See exactly when you can move and when you have to stand still.
 A color-coded strip on top of the bar shows which band your target is in: **melee**, **dead zone**,
 **Auto Shot range** or **too far** (or **too close** when the game can't tell melee from the dead
 zone).
+
+The text also says **how far away** your target is, such as **Out of range · 40-45 yd**, so you
+know how far to walk before you can shoot. Addons can't read the exact distance, so it's the
+nearest steps the game's range checks give: 5 yards apart up to 45, then 100. It works in combat,
+and talents such as Hawk Eye count.
 
 The text above it warns you in combat:
 - **Face your target**
@@ -99,6 +104,23 @@ Your pet panel is also a remote for the calls you make in a hurry:
   them for your own bars.
 - **Duels:** when a duel is asked for, a button above the panel holds your pet back so it doesn't
   run in when the duel starts.
+
+## Pet abilities
+Type **/deadeye dex** for every rank of every Forever pet ability, with the pet level and training
+points it needs, straight from the game's data and in your game's language. Under each rank are
+the beasts **you've** found that teach it.
+
+- **Fill it in as you play.** Cast Beast Lore on a beast and Deadeye saves the ranks it teaches and
+  where you found it. A beast you tame brings its ranks along, and rare beasts are saved where you
+  see them. Nothing is pre-filled: the hunt is yours, and your finds are shared by the hunters on
+  your account.
+- **Your pet's page** shows what its family can learn: what it has, what you've learned in Beast
+  Training, how many beasts you've found for the rest, and ranks it's too low a level for.
+- **Click a beast** to open your map there, with pins where you found it, and a TomTom arrow if you
+  use TomTom.
+- **Level-ups:** when your pet reaches a new rank, chat tells you, and whether you know where to
+  get it.
+- Bind a key to **Beast Lore on your mouseover target** and tap it on each beast you pass.
 
 ## Delay report
 After each fight, see how much Auto Shot time you lost to moving or casting (`/deadeye stats`).
