@@ -5,4 +5,7 @@
 	<Binding name="CLICK DeadeyePetKeys:RightButton" category="ADDONS"/>
 	<Binding name="CLICK DeadeyePetKeys:Button4" category="ADDONS"/>
 	<Binding name="CLICK DeadeyePetKeys:MiddleButton" category="ADDONS"/>
+	<!-- Pet abilities (Modules\Dex.lua): Beast Lore on your mouseover target, and the window. -->
+	<Binding name="CLICK DeadeyeBeastLore:LeftButton" category="ADDONS"/>
+	<Binding name="DEADEYE_DEX" category="ADDONS">Deadeye_ToggleDex()</Binding>
 </Bindings>

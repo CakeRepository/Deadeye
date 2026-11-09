@@ -72,6 +72,9 @@ local ADDON_GLOBALS = {
 	["BINDING_NAME_CLICK DeadeyePetKeys:RightButton"] = true,
 	["BINDING_NAME_CLICK DeadeyePetKeys:Button4"] = true,
 	["BINDING_NAME_CLICK DeadeyePetKeys:MiddleButton"] = true,
+	["BINDING_NAME_CLICK DeadeyeBeastLore:LeftButton"] = true,
+	BINDING_NAME_DEADEYE_DEX = true,
+	Deadeye_ToggleDex = true,
 	SLASH_DEADEYE1 = true,
 	SLASH_DEADEYE2 = true,
 	Deadeye_OnAddonCompartmentClick = true,
@@ -79,14 +82,14 @@ local ADDON_GLOBALS = {
 	Deadeye_OnAddonCompartmentLeave = true,
 }
 -- Optional globals that are simply absent unless another addon provides them.
-local OPTIONAL_GLOBALS = { LibStub = true }
+local OPTIONAL_GLOBALS = { LibStub = true, TomTom = true }
 H.addonGlobals, H.optionalGlobals = ADDON_GLOBALS, OPTIONAL_GLOBALS
 
 -- Mocks for newer features live in tests/mocks/<name>.lua. Each returns
 -- function(W, env, M) that adds to a new world (M: check, NewFrame, isNumber,
 -- isSecret, options, H). They wrap the functions defined here for the cases
 -- they handle and pass every other call on to the function they wrapped.
-local MOCK_FILES = { "ammo", "aspect", "clipping", "tranq", "petcommands" }
+local MOCK_FILES = { "ammo", "aspect", "clipping", "tranq", "petcommands", "dex" }
 local HERE = debug.getinfo(1, "S").source:match("^@(.*)[/\]harness%.lua$") or "tests"
 local mockChunks = {}
 local function MockFile(name)
@@ -462,6 +465,10 @@ end
 
 function Frame:GetScript(name)
 	return self.scripts[name]
+end
+
+function Frame:EnableMouseWheel(enable)
+	self.mouseWheel = enable and true or false
 end
 
 function Frame:RegisterEvent(event)

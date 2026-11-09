@@ -28,7 +28,7 @@ The description below was last brought up to date for v0.5.2-beta.
 
 **Source:** https://github.com/CakeRepository/Deadeye
 
-**Game version for the file:** WoW: Forever 1.60.1 &nbsp;·&nbsp; **Release type:** Beta
+**Game version for the file:** WoW: Forever 1.60.1 &nbsp;·&nbsp; **Release type:** Release
 
 ---
 

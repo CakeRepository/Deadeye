@@ -242,6 +242,37 @@ for _, locale in ipairs(LOCALES) do
 		W.inCombat = false
 		W.Fire("PLAYER_REGEN_ENABLED")
 
+		-- Pet abilities: Beast Lore read and unread, a rare, a level-up, the
+		-- window's pages, a beast's tooltip and the map, the diagnostics.
+		local Dex = W.ns.modules.Dex
+		W.pet = PetData()
+		W.pet.family, W.pet.level = "Cat", 15
+		W.Fire("UNIT_PET", "player")
+		W.hasTarget = true
+		W.units.target = { id = 2959, name = "Prairie Stalker", level = 16, family = "Cat", lore = { "Claw 3" } }
+		W.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-1", 1462)
+		W.Advance(2)
+		W.units.target = { id = 1196, name = "Ice Claw Bear", level = 7, family = "Bear" }
+		W.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-2", 1462)
+		W.Advance(2)
+		W.units.mouseover = { id = 1130, name = "Bjarn", level = 12, family = "Bear", classification = "rare" }
+		W.Fire("UPDATE_MOUSEOVER_UNIT")
+		W.pet.level = 16
+		W.Fire("UNIT_LEVEL", "pet")
+		W.Slash("dex")
+		H.True(Dex.frame:IsShown(), "pet abilities")
+		Dex:Scroll(20)
+		W.Click(Dex.tabs[2])
+		W.Click(Dex.tabs[3])
+		Dex.rows[1].scripts.OnEnter(Dex.rows[1])
+		W.Click(Dex.rows[1])
+		W.Slash("dex lore")
+		W.Slash("dex forget")
+		W.Slash("dex")
+		W.units.target, W.units.mouseover, W.hasTarget = nil, nil, false
+		W.pet = nil
+		W.Fire("UNIT_PET", "player")
+
 		-- Ammo: the counter, its warnings and the vendor button.
 		W.bags = { [0] = { size = 16 }, [1] = { size = 6, family = 1 } }
 		W.equipped[18], W.equipped[0] = 2504, 2512

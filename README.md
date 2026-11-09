@@ -28,6 +28,11 @@ A hunter toolkit for **World of Warcraft: Forever** (interface 16001):
 - **Pet commands** on the pet panel: click it to send your pet in with Charge, again to call it
   back, right-click to park it, shift-click for its stance. Key bindings and macros do the same,
   and a duel request brings up a button that holds your pet back.
+- **Pet abilities** (`/deadeye dex`): every rank of every pet ability, with its pet level and
+  training cost, and your own list of the beasts that teach each one. Cast Beast Lore on a beast
+  and Deadeye saves what it teaches and where it was. Tamed beasts and rare beasts you see are
+  saved too. Click a beast to see it on your map, and get told when your pet's level reaches a
+  new rank.
 - **Tranq Shot callout.** For hunters with Tranquilizing Shot: a big "Tranq Shot!" when a boss
   or your target enrages, and whether your shot removed it.
 - **Delay report.** After a fight, shows how much Auto Shot time you lost to moving or casting.
@@ -63,6 +68,7 @@ change immediately.
 | Ammo | Counter on or off, always or only when low, beside the bar or anywhere, the low mark, warnings, swapping ammo, the restock button, restocking by itself and its spending limit, better ammo, stacks to carry without a quiver |
 | Aspect | The aspect reminder and each of its warnings, the alert at the start of a fight, sound and color |
 | Pet (3 pages) | On or off, always or only when the pet needs attention, position, width, health and loyalty lines, feed button, skipped food, buying pet food, alerts, Growl reminders, sound, font |
+| Pet abilities | Saving beasts from Beast Lore, taming and rare sightings, level-up messages, map pins for every beast, TomTom arrow, forgetting your finds |
 | Tranq Shot | (once you know Tranquilizing Shot) the callout, nameplates, announcing in group chat, position, text, sound |
 | Camera | Max camera distance, and a button that zooms all the way out |
 
@@ -129,6 +135,39 @@ Addons can't command a pet on their own: only your own clicks and key presses ca
 is one press of yours, and it works in combat too. The panel works as a remote while it's always
 shown (not when it only shows to ask for attention) and locked.
 
+### Pet abilities
+
+`/deadeye dex` (or a key under Key Bindings > AddOns > Deadeye) opens a list of every pet ability
+rank in WoW: Forever, with the pet level and training points each one needs. Under each rank are
+the beasts you've found that teach it, with their level and zone.
+
+The game only tells you which beast knows which rank when you cast **Beast Lore** on it, so the
+list starts empty and fills in as you play:
+
+- **Beast Lore** on a beast saves the ranks it teaches and where you stood. Bind **Beast Lore on
+  your mouseover target** to a key, then tap it on each beast as you pass, no targeting needed.
+- **Taming** a beast saves the ranks it brought along.
+- **Rare beasts** you target, mouse over or see a nameplate for are saved with where and when.
+
+Your finds are shared by the hunters on your account, and a settings reset keeps them.
+
+The ranks themselves come from the game's own data (Forever 1.60.1): each pet family's
+abilities, every rank's pet level and training point cost, and the spell behind it, so names show
+in your game's language. Only the beasts are left for you to find: which beast knows which rank
+lives on Blizzard's servers.
+
+- **Your pet** shows the ranks your pet's family can learn. On the right of each rank it shows
+  whether your pet has it, whether you've learned it in Beast Training, how many beasts you've
+  found for it, or "Not found yet". A pet level in red is one your pet hasn't reached.
+- **All abilities** shows every family's, and **Rares** the rare beasts you've seen.
+- **Click a beast** to open your map on its zone, with pins where you found it. With TomTom
+  installed you also get its arrow, otherwise the game's own map pin.
+- When your pet **levels up** into a new rank, chat says so, and whether you've found a beast
+  that teaches it.
+
+If a Beast Lore you cast saves a beast without its abilities, target it and type
+`/deadeye dex lore`. It prints the tooltip's lines, which shows how the game wrote them.
+
 ### Casting between shots
 
 Cast-time shots like Aimed Shot hold back your Auto Shot if they run into the aim window. The bar
@@ -176,6 +215,7 @@ Every setting in the window also works from chat:
 /deadeye aspect <setting> <value>    aspect reminder, e.g. /deadeye aspect none off
 /deadeye commands <setting> <value>  pet commands, e.g. /deadeye commands macros
 /deadeye tranq <setting> <value>     Tranq Shot callout, e.g. /deadeye tranq announce on
+/deadeye dex <setting> <value>       pet abilities, e.g. /deadeye dex rares off
 /deadeye camera <setting> <value>    camera, e.g. /deadeye camera zoom 2.6
 /deadeye <setting>                   shows the current value and what it accepts
 /deadeye settings [range|pet|camera] lists every setting with its value
@@ -192,6 +232,9 @@ Other commands:
 - `/deadeye test` loops a fake Auto Shot.
 - `/deadeye stats` shows the last fight's Auto Shot delays.
 - `/deadeye pet unskip` lets the feed button use food you skipped again.
+- `/deadeye dex` opens or closes pet abilities; `/deadeye dex rares` opens its rare beasts.
+- `/deadeye dex lore` prints your target's tooltip, to check what Beast Lore shows.
+- `/deadeye dex forget` (twice) forgets every beast you've saved.
 - `/deadeye camera zoomout` sets the max camera distance and zooms all the way out.
 - `/deadeye debug` logs every shot.
 - `/deadeye reset` resets all settings.
@@ -272,6 +315,9 @@ combat log is closed to addons. In combat, weapon speed, health and target debuf
 - **Tranq Shot.** Whether a frenzy in combat sets off the callout, and with which name and icon.
 - **Growl reminder.** Going into a dungeon with Growl's autocast on.
 - **Pet panel.** Happiness icons, the feed alert, and the "no pet" warning.
+- **Pet abilities.** That Beast Lore saves a beast with its ranks ("Saved ...: teaches ..."). If
+  it saves one without them, send what `/deadeye dex lore` prints. Also check taming, rares, the
+  map pins and the TomTom arrow.
 - **Feed button.** That a click feeds the food shown, which food it picks, and that a right-click
   skips it.
 - **Haste.** If Rapid Fire lands mid-reload, the bar corrects itself on the next shot.
@@ -303,7 +349,7 @@ python tests/run_tests.py
 
 `lua5.1 tests/run.lua` also works if you have a standalone Lua 5.1.
 
-Releases: push a tag such as `v0.3.1-beta` and the
+Releases: push a tag such as `v0.6.0` and the
 [BigWigs packager](https://github.com/BigWigsMods/packager) workflow builds the zip and creates a
 GitHub release. A tag with "beta" or "alpha" in it is marked that way. It also uploads the zip to
 the CurseForge project (ID 1745019, set in `Deadeye.toc` as `## X-Curse-Project-ID`) when the
@@ -324,7 +370,8 @@ Modules/Ammo.lua        ammo counter, warnings and forecast, restocking at vendo
 Modules/Aspect.lua      aspect reminder
 Modules/Pet.lua         pet panel, feed button, pet food and Growl reminders
 Modules/PetCommands.lua pet commands: the pet panel as a remote, key bindings, macros, duels
-Bindings.xml            key bindings for the pet commands
+Modules/Dex.lua         pet abilities: ranks, the beasts you find, the window and map pins
+Bindings.xml            key bindings for the pet commands, Beast Lore and pet abilities
 Modules/Tranq.lua       Tranq Shot callout
 Modules/Camera.lua      max camera distance
 tests/                  mock client and scenario tests (tests/mocks/: mocks for newer features)

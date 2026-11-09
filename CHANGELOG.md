@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.6.0
+
+The first full release: no longer marked beta.
+
+- **Pet abilities** (`/deadeye dex`): every rank of every Forever pet ability, with the pet level
+  and training points it needs, and your own list of the beasts that teach each one. The ranks,
+  levels and costs come from the game's own data, new Forever abilities such as Sonic Blast
+  included, and show in your game's language.
+  - **You fill it in as you play.** Cast Beast Lore on a beast and Deadeye saves the ranks it
+    teaches and where you found it. A beast you tame brings its ranks along, and rare beasts are
+    saved where you see them. Nothing is pre-filled: you find them yourself, and your finds are
+    shared by the hunters on your account.
+  - **Your pet's page** shows the ranks its family can learn: which it has, which you've learned
+    in Beast Training, how many beasts you've found for the rest, and which need a higher pet
+    level. **All abilities** and **Rares** pages too.
+  - **Click a beast** to open your map there, with pins where you found it, a TomTom arrow if you
+    have TomTom, or else the game's map pin.
+  - **When your pet levels up** into a new rank, chat tells you, and whether you've found a beast
+    that teaches it.
+  - **A key for Beast Lore** on your mouseover target (Key Bindings > AddOns > Deadeye), for
+    sweeping a zone, and one that opens the window.
+
 ## v0.5.3-beta
 
 - **How far away your target is:** the range text adds a band of yards, such as
