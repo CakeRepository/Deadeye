@@ -1320,7 +1320,23 @@ function H.NewWorld(options)
 			}
 		end,
 	}
+	-- Item range checks: W.targetYards is how far the target is (nil: unknown),
+	-- W.rangeItemYards the items this client answers for and their ranges, and
+	-- W.itemRangeBlocked a client that answers none.
+	W.targetYards, W.itemRangeBlocked = nil, false
+	W.rangeItemYards = {
+		[8149] = 5, [9606] = 10, [4559] = 15, [1191] = 20, [13289] = 25,
+		[835] = 30, [1399] = 35, [4945] = 40, [221316] = 45, [5418] = 100,
+	}
 	env.C_Item = {
+		IsItemInRange = function(itemID, unit)
+			check(isNumber(itemID) and type(unit) == "string", "C_Item.IsItemInRange: item id and unit expected")
+			local yards = W.rangeItemYards[itemID]
+			if W.itemRangeBlocked or not yards or unit ~= "target" or not W.hasTarget or not W.targetYards then
+				return nil
+			end
+			return W.targetYards <= yards
+		end,
 		GetItemInfo = function(itemID)
 			check(isNumber(itemID), "C_Item.GetItemInfo: item id expected")
 			local item = W.items[itemID]

@@ -7,6 +7,13 @@
 -- the text then just says you have no shot. Without a melee check that works
 -- (low level hunters only have Raptor Strike, whose check can't be trusted),
 -- melee range and the dead zone read as one band: too close.
+--
+-- How far away the target is shows after the text as a band of yards, such as
+-- "30-35 yd" or "45-100 yd": the game never tells addons the exact distance to
+-- an enemy, only whether a spell or an item would reach it. Item checks give
+-- the steps (in combat too: Blizzard only blocks them on friendly units there),
+-- Auto Shot and Hunter's Mark fill in. The unit is the game's own: yards, which
+-- most other languages' clients call meters, as their spell tooltips do.
 local _, ns = ...
 local L = ns.L
 
@@ -20,6 +27,7 @@ local Range = ns:NewModule("Range", {
 	stripWidth = 220,
 	stripHeight = 6,
 	markAlert = true, -- "Mark your target" in combat when the target has no Hunter's Mark
+	distance = true, -- how far away the target is, as a band of yards after the text
 	font = "Default",
 	fontSize = 14,
 	fontOutline = "OUTLINE",
@@ -63,6 +71,27 @@ local MELEE_SWING_SECONDS = 4 -- a melee swing this recent means you're still in
 local CLOSE_DISTANCE_INDEX = 3 -- CheckInteractDistance: duel range, about 10 yards
 local POLL_SECONDS = 0.1
 local SAMPLE_STATUS = "ranged" -- shown while previewing or moving the frame
+local SAMPLE_BAND = { 30, 35 }
+local MIN_SHOT_YARDS = 8 -- Auto Shot's minimum range: closer is the dead zone
+local MARK_YARDS = 100 -- Hunter's Mark's range
+-- Items whose range checks the game answers for enemies, by their range in
+-- yards: LibRangeCheck-3.0's list for Classic Era and Forever. The first one
+-- this client answers for is used from then on.
+local RANGE_ITEMS = {
+	{ 5, { 8149, 15826, 16308, 17117, 22259, 22432 } },
+	{ 10, { 9606, 9618, 9619, 9620, 9621, 10699, 17626, 17689 } },
+	{ 15, { 4559 } },
+	{ 20, { 1191, 4388, 10645, 13892, 17757, 18209, 22048 } },
+	{ 25, { 13289 } },
+	{ 30, { 835, 1404, 1434, 2091, 3434, 4479, 4480, 4481, 4941, 5079, 17202, 20084 } },
+	{ 35, { 1399, 1402, 18904 } },
+	{ 40, { 4945, 8348 } },
+	{ 45, { 221316 } },
+	{ 100, { 5418, 17162, 23715, 23718 } },
+}
+local SCAN_SECONDS = 1 -- how often items that haven't answered yet are tried again
+-- The range texts that get the band. Melee and the dead zone say enough.
+local DISTANCE_STATUSES = { ranged = true, tooFar = true, noShot = true }
 
 local SHOW_CHOICES = {
 	{ value = "target", text = L["With a hostile target"] },
@@ -374,6 +403,106 @@ function Range:MarkReminder(now)
 	return "noMark"
 end
 
+-- Distance bands ------------------------------------------------------------
+local rangeItem = {} -- [yards] = the item that answers for that range
+local nextScan = 0
+
+-- Asks the game for the items' data, so their checks answer sooner.
+local function LoadRangeItems()
+	for _, entry in ipairs(RANGE_ITEMS) do
+		for _, itemID in ipairs(entry[2]) do
+			C_Item.GetItemInfo(itemID)
+		end
+	end
+end
+
+-- Whether the target is within this many yards (true or false), or nil when no
+-- item for it answers. Items that haven't answered are tried once a second.
+local function WithinItemRange(entry, now)
+	local item = rangeItem[entry[1]]
+	if item then
+		return ns.Readable(C_Item.IsItemInRange(item, "target"))
+	end
+	if now < nextScan then
+		return nil
+	end
+	for _, candidate in ipairs(entry[2]) do
+		local inRange = ns.Readable(C_Item.IsItemInRange(candidate, "target"))
+		if inRange ~= nil then
+			rangeItem[entry[1]] = candidate
+			return inRange
+		end
+	end
+end
+
+-- Auto Shot's reach: the range the game lists for it (with talents such as
+-- Hawk Eye), or its range without talents.
+local function AutoShotReach()
+	local info = C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(AUTO_SHOT_SPELL_ID)
+	local listed = info and ns.Readable(info.maxRange)
+	if listed and listed > 0 then
+		return listed
+	end
+	return AUTO_SHOT_YARDS
+end
+
+-- How far away your target is: lo to hi yards (hi nil: farther than lo), or
+-- nothing until a check says how far it is at least ("0-100" says nothing).
+function Range:DistanceBand(status, now)
+	local lo, hi
+	local function Within(yards)
+		if not hi or yards < hi then
+			hi = yards
+		end
+	end
+	local function Beyond(yards)
+		if not lo or yards > lo then
+			lo = yards
+		end
+	end
+	local scanning = now >= nextScan
+	for _, entry in ipairs(RANGE_ITEMS) do
+		local inRange = WithinItemRange(entry, now)
+		if inRange == true then
+			Within(entry[1])
+		elseif inRange == false then
+			Beyond(entry[1])
+		end
+	end
+	if scanning then
+		nextScan = now + SCAN_SECONDS
+	end
+	local marked = markName and ns.Readable(C_Spell.IsSpellInRange(markName, "target"))
+	if marked == true then
+		Within(MARK_YARDS)
+	elseif marked == false then
+		Beyond(MARK_YARDS)
+	end
+	-- Auto Shot: in range is 8 yards to its reach (unless the items saw it reach
+	-- farther than listed); out of range past duel range is past its reach.
+	local reach = AutoShotReach()
+	if status == "ranged" then
+		Beyond(MIN_SHOT_YARDS)
+		if lo < reach then
+			Within(reach)
+		end
+	elseif status == "tooFar" and not (hi and hi <= reach)
+		and ns.Readable(C_Spell.IsSpellInRange(AUTO_SHOT_SPELL_ID, "target")) == false then
+		Beyond(reach)
+	end
+	if not lo or (hi and lo >= hi) then
+		return nil
+	end
+	return lo, hi
+end
+
+local function BandText(lo, hi)
+	if hi then
+		return L["%d-%d yd"]:format(lo, hi)
+	end
+	return L["%d+ yd"]:format(lo)
+end
+
 function Range:Update()
 	local frame, db = self.frame, self.db
 	local now = GetTime()
@@ -396,6 +525,17 @@ function Range:Update()
 			text, color = ns.modules.Aspect:WarningText()
 		else
 			text, color = db.labels[key], db.colors[key]
+			if key == status and db.distance and DISTANCE_STATUSES[status] then
+				local lo, hi
+				if hasTarget then
+					lo, hi = self:DistanceBand(status, now)
+				elseif sample then
+					lo, hi = SAMPLE_BAND[1], SAMPLE_BAND[2]
+				end
+				if lo then
+					text = text .. " \194\183 " .. BandText(lo, hi) -- a middle dot
+				end
+			end
 		end
 		frame.text:SetText(text)
 		frame.text:SetTextColor(color[1], color[2], color[3])
@@ -568,8 +708,9 @@ function Range:GetOptionSections()
 		},
 		{
 			name = L["Range: text"],
-			keys = { "labels", "font", "fontSize", "fontOutline" },
+			keys = { "labels", "distance", "font", "fontSize", "fontOutline" },
 			controls = {
+				{ type = "toggle", label = L["Show how far away it is"], key = "distance", slash = "distance" },
 				{ type = "input", label = L["Melee range"], key = "labels.melee", slash = "meleetext" },
 				{ type = "input", label = L["Auto Shot range"], key = "labels.ranged", slash = "rangedtext" },
 				{ type = "input", label = L["Dead zone"], key = "labels.deadZone", slash = "deadzonetext" },
@@ -602,6 +743,7 @@ function Range:OnEnable()
 	db.layoutVersion = 2
 
 	markName = C_Spell.GetSpellName(HUNTERS_MARK_SPELL_ID)
+	LoadRangeItems()
 	self:BuildFrame()
 	local events = ns.CreateEventFrame(self)
 	for _, event in ipairs({ "PLAYER_TARGET_CHANGED", "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" }) do

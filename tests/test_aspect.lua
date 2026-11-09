@@ -14,6 +14,7 @@ local function Setup(options)
 	W.knownSpells = { [HAWK] = true, [MONKEY] = true, [CHEETAH] = true, [PACK] = true }
 	H.LoadAddon(W, ROOT)
 	W.Slash("range markalert off")
+	W.Slash("range distance off")
 	W.hasTarget, W.inRange = true, true
 	W.Fire("PLAYER_TARGET_CHANGED")
 	return W, W.ns.modules.Aspect, W.ns.modules.Range

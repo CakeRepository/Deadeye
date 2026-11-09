@@ -6,9 +6,11 @@ local function test(name, fn)
 	tests[#tests + 1] = { name = name, fn = fn }
 end
 
+-- The distance after the range text has tests of its own (test_distance.lua).
 local function Setup(options)
 	local W = H.NewWorld(options)
 	H.LoadAddon(W, ROOT)
+	W.Slash("range distance off")
 	return W, W.ns.modules.Range, W.ns.modules.Pet
 end
 

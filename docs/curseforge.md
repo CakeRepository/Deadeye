@@ -14,6 +14,8 @@ first title's words, which keeps old links working.
 **Summary:**
 Auto Shot bar, range strip, ammo counter with automatic restocking, aspect reminder, pet panel with a feed button, and a Tranq Shot callout for WoW: Forever hunters.
 
+The description below was last brought up to date for v0.5.2-beta.
+
 **Screenshots** (Media tab), in `docs/screenshots/`, with captions:
 1. `1-auto-shot-bar.png`: The Auto Shot bar with the range strip and the Hunter's Mark reminder
 2. `2-range-strip.png`: The range strip above the bar: you're in Auto Shot range
@@ -46,6 +48,8 @@ See exactly when you can move and when you have to stand still.
   a cast will delay it.
 - Optional "stop moving" sound as the aim window starts, or only if you're moving in it.
 - Latency compensation, and an out-of-range dim.
+- **Melee swing timer:** while you swing in melee, the bar splits into two lanes, Auto Shot's and
+  your swing's. The lane for where you fight takes most of the bar, so you see both at a glance.
 
 ## Range strip
 A color-coded strip on top of the bar shows which band your target is in: **melee**, **dead zone**,
@@ -81,7 +85,20 @@ and reminds you to turn off Growl in dungeons and raids.
 Click the button beside the pet panel to feed your pet. It picks the food for you: food close to
 your pet's level, lowest level first so your better food lasts. Food that makes you **well fed** is
 saved for you. Right-click to skip a food, and hover to see what it will use. It lights up while
-your pet isn't happy.
+your pet isn't happy, and while your pet is dead a **Revive Pet** button takes its place.
+
+## Pet commands
+Your pet panel is also a remote for the calls you make in a hurry:
+- **Click** to send your pet in, opening with Charge (boar), Dash or Dive. **Click again** to call
+  it back on passive, even while it's still running in. Sent in again, it gets its stance back.
+- **Right-click** parks it where it stands. **Shift-right-click** uses the game's Move To.
+- **Shift-click** changes its stance, shown at the panel's top right.
+- No pet out? A click casts **Call Pet**. Dead? **Revive Pet**.
+- The panel lights up when Charge would land.
+- Key bindings for every command (Key Bindings > AddOns > Deadeye), and one button makes macros of
+  them for your own bars.
+- **Duels:** when a duel is asked for, a button above the panel holds your pet back so it doesn't
+  run in when the duel starts.
 
 ## Delay report
 After each fight, see how much Auto Shot time you lost to moving or casting (`/deadeye stats`).
@@ -100,6 +117,9 @@ Every option also works from chat, for example `/deadeye width 260`, `/deadeye t
 
 To move frames, use `/deadeye move`, the **Unlock frames** box, or Blizzard's **Edit Mode**.
 
+The alerts a fight can start with (no aspect, low ammo, no pet) share one **Sound when a fight
+starts** switch: turn it off and they still say so in chat, while every other sound stays.
+
 ## Languages
 Deadeye follows your game's language: English, Deutsch, Español, Français, Italiano, Português
 (Brasil), Русский, 한국어, 简体中文 and 繁體中文. The translations are first drafts, so corrections
@@ -109,5 +129,5 @@ from native speakers are very welcome on GitHub. Chat commands stay in English e
 - Hunters only.
 - Built for Forever's addon rules. It uses the game's own swing event, and secret combat values
   are only shown, never computed with.
-- This is a **beta**. Please report anything that looks off at
-  https://github.com/CakeRepository/Deadeye/issues. Output from `/deadeye debug` helps a lot.
+- Please report anything that looks off at https://github.com/CakeRepository/Deadeye/issues.
+  Output from `/deadeye debug` helps a lot.

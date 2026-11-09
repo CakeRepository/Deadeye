@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.5.3-beta
+
+- **How far away your target is:** the range text adds a band of yards, such as
+  **Out of range · 40-45 yd**, so you know how far to walk before you can shoot. The game never
+  tells addons the exact distance, so it's the nearest steps its range checks give: 5 yards apart
+  up to 45, then Hunter's Mark at 100. It works in combat too. Auto Shot's reach follows the range
+  the game lists for it, so talents such as Hawk Eye count. Shown on Ranged, Out of range and No
+  shot; turn it off with **Show how far away it is** on the **Range: text** page. The unit is the
+  game's own: yards, which the German, French, Spanish, Portuguese, Russian and Korean clients
+  call meters.
+
 ## v0.5.2-beta
 
 - **Melee swing timer in the Auto Shot bar:** while you swing in melee, the bar splits into two

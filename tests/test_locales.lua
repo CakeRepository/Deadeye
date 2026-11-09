@@ -192,9 +192,16 @@ for _, locale in ipairs(LOCALES) do
 		window:ResetAll()
 		W.Slash("")
 
-		-- Range texts and the Hunter's Mark reminder.
-		W.hasTarget, W.inRange, W.meleeInRange = true, true, false
+		-- Range texts, the distance after them, and the Hunter's Mark reminder.
+		local Range = W.ns.modules.Range
+		W.hasTarget, W.inRange, W.meleeInRange, W.targetYards = true, true, false, 32
 		W.Fire("PLAYER_TARGET_CHANGED")
+		W.Advance(0.2)
+		H.Equal(Range.frame.text.text, L["Ranged"] .. " \194\183 " .. L["%d-%d yd"]:format(30, 35), "the distance")
+		W.inRange, W.close, W.markable, W.targetYards = false, false, false, 150
+		W.Advance(0.2)
+		H.Equal(Range.frame.text.text, L["Out of range"] .. " \194\183 " .. L["%d+ yd"]:format(100), "past every check")
+		W.inRange, W.close, W.markable, W.targetYards = true, nil, nil, nil
 		W.inCombat = true
 		W.Fire("PLAYER_REGEN_DISABLED")
 		W.Fire("UI_ERROR_MESSAGE", 2, "")

@@ -9,8 +9,9 @@ A hunter toolkit for **World of Warcraft: Forever** (interface 16001):
   timer gets a lane of its own in the bar: the lane for where you fight takes most of it, so you
   see both at a glance.
 - **Range indicator.** A color strip on top of the bar: melee, dead zone, Auto Shot range, or too
-  far. It also warns you when you're not facing your target, have no line of sight, or your
-  Hunter's Mark isn't on an enemy you can shoot.
+  far, with how far away your target is (**Out of range · 40-45 yd**). It also warns you when
+  you're not facing your target, have no line of sight, or your Hunter's Mark isn't on an enemy you
+  can shoot.
 - **Ammo and restocking.** An ammo counter beside the bar, with how many minutes of fighting your
   ammo lasts and warnings before you run out or leave town short. At vendors, Deadeye restocks you
   by itself: it fills your quiver, switches to better ammo you can use, and buys food your pet
@@ -58,7 +59,7 @@ change immediately.
 | Colors | Reload, aim window, moving or casting, idle, out-of-range opacity, text and warning colors |
 | Text, Wording | Font, size, outline, where the label and timer go, decimals, and the wording for each phase and warning |
 | Timing & Alerts | When the bar shows, the melee swing timer, aim window length, latency compensation, range dimming, stop-moving sound, delay report |
-| Range (3 pages) | On or off, when it shows, on the bar or anywhere, strip or text, size, Hunter's Mark reminder, colors, wording and font |
+| Range (3 pages) | On or off, when it shows, on the bar or anywhere, strip or text, size, Hunter's Mark reminder, colors, wording, how far away it is, and font |
 | Ammo | Counter on or off, always or only when low, beside the bar or anywhere, the low mark, warnings, swapping ammo, the restock button, restocking by itself and its spending limit, better ammo, stacks to carry without a quiver |
 | Aspect | The aspect reminder and each of its warnings, the alert at the start of a fight, sound and color |
 | Pet (3 pages) | On or off, always or only when the pet needs attention, position, width, health and loyalty lines, feed button, skipped food, buying pet food, alerts, Growl reminders, sound, font |
@@ -218,6 +219,13 @@ combat log is closed to addons. In combat, weapon speed, health and target debuf
   tell melee range from the dead zone, the strip says **Too close** and lights both bands. Out of
   combat, `CheckInteractDistance` tells the dead zone from too far. Addons can't get the exact
   distance to an enemy.
+- **How far away.** `C_Item.IsItemInRange` answers whether an item could be used on your target
+  from where you stand, and Blizzard only blocks it in combat for friendly units. Items with
+  ranges of 5 to 45 yards (LibRangeCheck-3.0's list for Classic Era) give the band's steps;
+  Hunter's Mark adds 100. Auto Shot's reach is `C_Spell.GetSpellInfo(75).maxRange`, so in Auto
+  Shot range is 8 yards to that reach, and past duel range with Auto Shot out of range is past it.
+  Items that haven't answered are tried again once a second. The band only shows once a check says
+  how far your target is at least: "0-100 yd" would tell you nothing.
 - **Hunter's Mark.** You can only have one out, so the reminder asks whether your mark is on an
   enemy you can shoot, not whether your target is marked. Out of combat the mark is read on the
   target. In combat aura details are hidden, but aura instance IDs aren't: the addon notes the ID
@@ -253,6 +261,8 @@ combat log is closed to addons. In combat, weapon speed, health and target debuf
 - **Range strip and warnings.** Facing, line of sight, dead zone or too far in combat, and the
   Hunter's Mark reminder. Melee range below level 12, where Raptor Strike is your only melee
   ability: `/deadeye debug` says when a melee check is ignored.
+- **How far away.** That the band shows in and out of combat, and that it moves in 5-yard steps
+  as you walk away from a target dummy. With Hawk Eye, whether Ranged reads up to 41 yards.
 - **Ammo.** The count, the low and out-of-ammo warnings, and the vendor button: what it buys, that
   a full quiver stops it, and refilling by itself.
 - **Aspect reminder.** Switching or cancelling an aspect in combat.
